@@ -57,16 +57,28 @@ def main() -> int:
 
     health_server = _run_health_server(stop_event, health_port)
     exit_code = 0
+    reconnect_count = 0
     try:
         while not stop_event.is_set():
             try:
                 run(mode="live", config_path=config_path)
             except Exception as exc:
+                reconnect_count += 1
+                emit_run_progress(
+                    artifacts_dir=artifacts_dir,
+                    mode="live",
+                    status="degraded",
+                    last_error="reconnecting_after_error",
+                    monitor_status="reconnecting",
+                    reconnect_count=reconnect_count,
+                )
                 emit_run_progress(
                     artifacts_dir=artifacts_dir,
                     mode="live",
                     status="failed",
                     last_error=str(exc),
+                    monitor_status="degraded",
+                    reconnect_count=reconnect_count,
                 )
                 exit_code = 1
                 stop_event.set()
@@ -80,6 +92,8 @@ def main() -> int:
             mode="live",
             status=final_status,
             last_error=final_error,
+            monitor_status="degraded",
+            reconnect_count=reconnect_count,
         )
         stop_event.set()
         health_server.shutdown()

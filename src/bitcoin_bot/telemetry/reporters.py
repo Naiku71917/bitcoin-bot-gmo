@@ -15,12 +15,25 @@ def emit_run_progress(
     mode: str,
     status: str,
     last_error: str | None,
+    monitor_status: str | None = None,
+    reconnect_count: int = 0,
 ) -> dict:
+    resolved_monitor_status = monitor_status
+    if resolved_monitor_status is None:
+        if status in {"running", "success"}:
+            resolved_monitor_status = "active"
+        elif status in {"degraded", "abort", "failed"}:
+            resolved_monitor_status = "degraded"
+        else:
+            resolved_monitor_status = "reconnecting"
+
     progress = {
         "status": status,
         "updated_at": datetime.now(UTC).isoformat(),
         "mode": mode,
         "last_error": last_error,
+        "monitor_status": resolved_monitor_status,
+        "reconnect_count": reconnect_count,
     }
     output_path = f"{artifacts_dir}/run_progress.json"
     atomic_dump_json(output_path, progress)

@@ -26,6 +26,7 @@ def run_live(
         mode="live",
         status="running",
         last_error=None,
+        monitor_status="active",
     )
     heartbeat = Path(config.paths.artifacts_dir) / "heartbeat.txt"
     heartbeat.parent.mkdir(parents=True, exist_ok=True)
@@ -55,6 +56,7 @@ def run_live(
         last_error=guard_result["reason_codes"][0]
         if guard_result["reason_codes"]
         else None,
+        monitor_status="active" if guard_result["status"] == "success" else "degraded",
     )
 
     return {
@@ -65,5 +67,11 @@ def run_live(
             "product_type": config.exchange.product_type,
             "stop_reason_codes": guard_result["reason_codes"],
             "risk_guards": guard_result,
+            "monitor_summary": {
+                "status": "active"
+                if guard_result["status"] == "success"
+                else "degraded",
+                "reconnect_count": 0,
+            },
         },
     }
