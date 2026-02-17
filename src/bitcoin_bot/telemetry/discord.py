@@ -27,3 +27,5 @@ def send_discord_webhook(enabled: bool) -> dict:
             return {"status": "sent", "reason": None}
     except URLError as exc:
         return {"status": "failed", "reason": str(exc)}
+    except Exception as exc:  # pragma: no cover
+        return {"status": "failed", "reason": str(exc)}
