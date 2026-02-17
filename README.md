@@ -29,3 +29,10 @@ pytest -q
 ```bash
 pre-commit run --all-files
 ```
+
+## 品質ゲート
+
+```bash
+pre-commit run --all-files
+pytest -q --cov=src/bitcoin_bot --cov-report=term-missing --cov-report=xml --cov-report=html
+```
