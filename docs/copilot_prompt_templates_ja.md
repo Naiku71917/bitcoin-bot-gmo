@@ -528,6 +528,161 @@ GMO adapter の失敗系を仕様どおり正規化してください。
 - pre-commit / pytest が通る
 ```
 
+## 2.22 PR-22: GMO実通信の最小実装（Read Only）
+
+```text
+GMO adapter を read-only API まで実運用可能な最小実装へ更新してください。
+
+対象:
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- src/bitcoin_bot/exchange/protocol.py（必要最小限）
+- tests/test_exchange_runtime_integration.py（新規可）
+
+必須仕様:
+- 少なくとも以下を実通信化（HTTP）
+  - fetch_ticker
+  - fetch_balances（認証あり）
+- タイムアウト/通信失敗時は NormalizedError へ正規化
+- 現物/レバで product_type の整合を保つ
+
+実行コマンド（必須）:
+- pytest -q tests/test_exchange_runtime_integration.py
+- pre-commit run --all-files
+
+受け入れ条件:
+- 通信成功モック/失敗モックの両方で契約テスト通過
+- 既存 exchange 契約テストを壊さない
+```
+
+## 2.23 PR-23: ライブ再接続ポリシーの実装
+
+```text
+run_live 常駐ループに再接続ポリシーを実装し、monitor status を実挙動と一致させてください。
+
+対象:
+- scripts/run_live.py
+- src/bitcoin_bot/telemetry/reporters.py
+- tests/test_live_reconnect_policy.py（新規可）
+
+必須仕様:
+- 例外発生時、即終了ではなく再試行ループ（回数/待機秒は環境変数で制御）
+- monitor status 遷移
+  - active -> reconnecting -> active/degraded
+- 再試行上限超過時に failed で終了
+
+実行コマンド（必須）:
+- pytest -q tests/test_live_reconnect_policy.py
+- pytest -q
+
+受け入れ条件:
+- 再接続成功/失敗の遷移テスト通過
+- run_progress / run_complete 契約を壊さない
+```
+
+## 2.24 PR-24: Prometheus最小エンドポイント追加
+
+```text
+監視の三層要件を満たすため、Prometheus メトリクスの最小実装を追加してください。
+
+対象:
+- scripts/run_live.py
+- src/bitcoin_bot/telemetry/reporters.py（必要最小限）
+- docker-compose.yml
+- tests/test_metrics_contract.py（新規可）
+
+必須仕様:
+- /metrics エンドポイントを追加（カウンタ/ゲージを最低3種）
+  - run_loop_total
+  - run_loop_failures_total
+  - monitor_status（ラベルまたは数値）
+- 既存 /healthz と共存
+
+実行コマンド（必須）:
+- docker-compose up -d --build
+- curl -fsS http://127.0.0.1:9754/metrics
+- pytest -q tests/test_metrics_contract.py
+
+受け入れ条件:
+- /metrics が取得できる
+- monitor status がメトリクスに反映される
+```
+
+## 2.25 PR-25: 実行保護フラグ（本番誤発注防止）
+
+```text
+本番誤発注を防ぐため、注文実行可否フラグを導入してください。
+
+対象:
+- src/bitcoin_bot/config/models.py
+- src/bitcoin_bot/config/loader.py
+- src/bitcoin_bot/config/validator.py
+- src/bitcoin_bot/pipeline/live_runner.py
+- tests/test_execute_orders_flag.py（新規可）
+
+必須仕様:
+- `runtime.execute_orders`（bool, default false）を追加
+- false の場合は注文系を実行せず、reason_codes に `execute_orders_disabled`
+- run_summary に実行可否を明示
+
+実行コマンド（必須）:
+- pytest -q tests/test_execute_orders_flag.py
+- pytest -q
+
+受け入れ条件:
+- false で注文未実行が保証される
+- true で既存フローに影響しない
+```
+
+## 2.26 PR-26: Secrets/環境変数の起動前検証
+
+```text
+運用事故防止のため、起動前に secrets/環境変数の最小検証を追加してください。
+
+対象:
+- scripts/run_live.py
+- src/bitcoin_bot/config/validator.py（必要最小限）
+- README.md
+- tests/test_runtime_env_validation.py（新規可）
+
+必須仕様:
+- live + execute_orders=true のとき、必須環境変数未設定なら起動失敗
+- Discord有効時の webhook 設定不備は非致命（警告+status failed）
+- 検証結果を run_progress へ残す
+
+実行コマンド（必須）:
+- pytest -q tests/test_runtime_env_validation.py
+- pre-commit run --all-files
+
+受け入れ条件:
+- 必須環境変数不足ケースをテストで検出
+- 非致命通知契約を壊さない
+```
+
+## 2.27 PR-27: 24h運用スモーク用スクリプト追加
+
+```text
+実運用前確認として、長時間運用のスモーク検証スクリプトを追加してください。
+
+対象:
+- scripts/smoke_live_daemon.sh（新規）
+- docs/operations.md
+
+必須仕様:
+- 以下を自動実行
+  - 起動
+  - health 監視
+  - run_progress/run_complete の存在確認
+  - 異常時にログ収集して終了コード非0
+- 既存コードへの変更は最小化
+
+実行コマンド（必須）:
+- bash scripts/smoke_live_daemon.sh
+
+受け入れ条件:
+- 正常系で終了コード0
+- 異常系で終了コード非0 + 切り分け情報出力
+```
+
 ---
 
 ## 3. PRレビュー時のチェックリスト
