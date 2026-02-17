@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Thread
 
 from bitcoin_bot.main import run
+from bitcoin_bot.telemetry.reporters import emit_run_progress
 
 
 class _HealthHandler(BaseHTTPRequestHandler):
@@ -52,17 +53,38 @@ def main() -> int:
     config_path = os.getenv("CONFIG_PATH", "configs/runtime.live.spot.yaml")
     interval_seconds = int(os.getenv("LIVE_LOOP_INTERVAL_SECONDS", "60"))
     health_port = int(os.getenv("HEALTH_PORT", "9754"))
+    artifacts_dir = os.getenv("ARTIFACTS_DIR", "./var/artifacts")
 
     health_server = _run_health_server(stop_event, health_port)
+    exit_code = 0
     try:
         while not stop_event.is_set():
-            run(mode="live", config_path=config_path)
+            try:
+                run(mode="live", config_path=config_path)
+            except Exception as exc:
+                emit_run_progress(
+                    artifacts_dir=artifacts_dir,
+                    mode="live",
+                    status="failed",
+                    last_error=str(exc),
+                )
+                exit_code = 1
+                stop_event.set()
+                break
             stop_event.wait(interval_seconds)
     finally:
+        final_status = "failed" if exit_code != 0 else "degraded"
+        final_error = "runtime_exception" if exit_code != 0 else "shutdown_signal"
+        emit_run_progress(
+            artifacts_dir=artifacts_dir,
+            mode="live",
+            status=final_status,
+            last_error=final_error,
+        )
         stop_event.set()
         health_server.shutdown()
         health_server.server_close()
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

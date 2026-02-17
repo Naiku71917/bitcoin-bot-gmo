@@ -2,11 +2,29 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from bitcoin_bot.optimizer.orchestrator import build_optimization_snapshot
 from bitcoin_bot.telemetry.discord import send_discord_webhook
 from bitcoin_bot.utils.io import atomic_dump_json
+
+
+def emit_run_progress(
+    *,
+    artifacts_dir: str,
+    mode: str,
+    status: str,
+    last_error: str | None,
+) -> dict:
+    progress = {
+        "status": status,
+        "updated_at": datetime.now(UTC).isoformat(),
+        "mode": mode,
+        "last_error": last_error,
+    }
+    output_path = f"{artifacts_dir}/run_progress.json"
+    atomic_dump_json(output_path, progress)
+    return progress
 
 
 def emit_run_complete(
