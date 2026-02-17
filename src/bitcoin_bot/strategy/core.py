@@ -46,6 +46,17 @@ class StrategyDecision:
             )
 
 
+@dataclass(slots=True)
+class PaperOrderEvent:
+    symbol: str
+    product_type: str
+    action: Action
+    confidence: float
+    reason_codes: list[str]
+    qty: float
+    order_type: str
+
+
 def _build_risk(
     action: Action, indicators: IndicatorInput, max_holding_bars: int
 ) -> StrategyRisk:
@@ -123,4 +134,25 @@ def hold_decision() -> StrategyDecision:
         confidence=0.0,
         reason_codes=["not_implemented"],
         risk=_build_risk("hold", indicators, max_holding_bars=0),
+    )
+
+
+def build_paper_order_event(
+    *,
+    decision: StrategyDecision,
+    symbol: str,
+    product_type: str,
+    qty: float = 0.01,
+) -> PaperOrderEvent | None:
+    if decision.action == "hold":
+        return None
+
+    return PaperOrderEvent(
+        symbol=symbol,
+        product_type=product_type,
+        action=decision.action,
+        confidence=decision.confidence,
+        reason_codes=list(decision.reason_codes),
+        qty=qty,
+        order_type="market",
     )
