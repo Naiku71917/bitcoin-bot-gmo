@@ -40,6 +40,19 @@ pre-commit run --all-files
 pytest -q --cov=src/bitcoin_bot --cov-report=term-missing --cov-report=xml --cov-report=html
 ```
 
+## リリース前フルチェック（1コマンド）
+
+```bash
+bash scripts/release_check.sh
+```
+
+- 実行内容:
+	- `pre-commit run --all-files`
+	- `pytest -q`
+	- `pytest -q --cov=src/bitcoin_bot --cov-report=term-missing --cov-report=xml --cov-report=html`
+	- `bash scripts/smoke_live_daemon.sh`
+- 失敗時は、どの段階（stage）で落ちたかをログに出力して非0終了します。
+
 ## 生成物
 
 - `var/artifacts/run_progress.json`

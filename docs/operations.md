@@ -48,6 +48,18 @@ SMOKE_REPEAT_COUNT=3 bash scripts/smoke_live_daemon.sh
 - `SMOKE_REPEAT_COUNT` を指定すると、health/artifacts 検証を指定回数反復します。
 - 失敗時は即終了し、`failed_iteration=<失敗回>/<総回数>` を出力します。
 
+## リリース前フルチェック
+
+```bash
+bash scripts/release_check.sh
+```
+
+- `release_check.sh` は以下を順に実行し、失敗した段階名を出力して非0終了します。
+	- pre-commit
+	- pytest（quick）
+	- pytest（coverage）
+	- smoke_live_daemon
+
 ## 一次切り分け（短縮版）
 
 - Logs:
