@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from bitcoin_bot.main import run
 
@@ -34,8 +35,20 @@ paths:
     assert "END_RUN_COMPLETE_JSON" in out
     assert result["pipeline"]["mode"] == "backtest"
 
-    artifact = json.loads(
-        open("var/artifacts/run_complete.json", encoding="utf-8").read()
-    )
-    assert "run_id" in artifact
-    assert "pipeline" in artifact
+    artifact_path = Path("var/artifacts/run_complete.json")
+    assert artifact_path.exists()
+
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    required_top_level = {
+        "run_id",
+        "started_at",
+        "completed_at",
+        "pipeline",
+        "pipeline_summary",
+        "optimization",
+        "notifications",
+    }
+    assert required_top_level.issubset(artifact.keys())
+    assert "discord" in artifact["notifications"]
+    assert "status" in artifact["notifications"]["discord"]
+    assert "reason" in artifact["notifications"]["discord"]

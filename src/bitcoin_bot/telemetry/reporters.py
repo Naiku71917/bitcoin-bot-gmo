@@ -18,7 +18,11 @@ def emit_run_complete(
     artifacts_dir: str,
     discord_enabled: bool,
 ) -> dict:
-    discord_result = send_discord_webhook(enabled=discord_enabled)
+    discord_result_raw = send_discord_webhook(enabled=discord_enabled)
+    discord_result = {
+        "status": discord_result_raw.get("status", "failed"),
+        "reason": discord_result_raw.get("reason"),
+    }
     optimization = build_optimization_snapshot(enabled=True, opt_trials=50)
 
     run_complete = {
