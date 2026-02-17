@@ -17,6 +17,21 @@ docker-compose ps
 curl -fsS http://127.0.0.1:9754/healthz
 ```
 
+## Secretsファイル運用（推奨）
+
+```bash
+mkdir -p secrets
+printf '%s' '<GMO_API_KEY>' > secrets/gmo_api_key
+printf '%s' '<GMO_API_SECRET>' > secrets/gmo_api_secret
+printf '%s' '<DISCORD_WEBHOOK_URL>' > secrets/discord_webhook_url
+
+# 起動
+docker-compose up -d --build
+```
+
+- `docker-compose.yml` は `/run/secrets/*` を優先読込します。
+- 既存の環境変数指定（`GMO_API_KEY` など）も引き続き利用可能です（後方互換）。
+
 ## 実運用前スモーク検証
 
 ```bash

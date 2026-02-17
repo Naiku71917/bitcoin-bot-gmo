@@ -3,17 +3,28 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["python", "scripts/run_live.py"]
+    command:
+      - sh
+      - -lc
+      - >
+        if [ -n "$${GMO_API_KEY_FILE:-}" ] && [ -f "$${GMO_API_KEY_FILE}" ]; then export GMO_API_KEY="$$(cat "$${GMO_API_KEY_FILE}")"; fi;
+        if [ -n "$${GMO_API_SECRET_FILE:-}" ] && [ -f "$${GMO_API_SECRET_FILE}" ]; then export GMO_API_SECRET="$$(cat "$${GMO_API_SECRET_FILE}")"; fi;
+        if [ -n "$${DISCORD_WEBHOOK_URL_FILE:-}" ] && [ -f "$${DISCORD_WEBHOOK_URL_FILE}" ]; then export DISCORD_WEBHOOK_URL="$$(cat "$${DISCORD_WEBHOOK_URL_FILE}")"; fi;
+        python scripts/run_live.py
     environment:
       HEALTH_PORT: "9754"
       LIVE_MAX_RECONNECT_RETRIES: "3"
       LIVE_RECONNECT_WAIT_SECONDS: "5"
+      GMO_API_KEY_FILE: "/run/secrets/gmo_api_key"
+      GMO_API_SECRET_FILE: "/run/secrets/gmo_api_secret"
+      DISCORD_WEBHOOK_URL_FILE: "/run/secrets/discord_webhook_url"
     ports:
       - "9754:9754"
     volumes:
       - ./var:/app/var
       - ./configs:/app/configs:ro
       - ./scripts:/app/scripts:ro
+      - ./secrets:/run/secrets:ro
     restart: unless-stopped
     stop_grace_period: 20s
     healthcheck:

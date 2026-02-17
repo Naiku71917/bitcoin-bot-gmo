@@ -66,6 +66,22 @@ curl -fsS http://127.0.0.1:9754/healthz
 - 不足時は `scripts/run_live.py` が起動失敗し、`run_progress.json` に検証結果を残します。
 - Discord通知が有効で webhook 環境変数未設定の場合は非致命で継続し、検証結果に `status=failed` が記録されます。
 
+## Docker secrets（段階導入）
+
+- `docker-compose.yml` は `./secrets` を `/run/secrets` に read-only マウントし、以下を優先読込します。
+	- `/run/secrets/gmo_api_key`
+	- `/run/secrets/gmo_api_secret`
+	- `/run/secrets/discord_webhook_url`
+- 既存の環境変数運用（`GMO_API_KEY`, `GMO_API_SECRET`, `DISCORD_WEBHOOK_URL`）も後方互換で利用可能です。
+
+```bash
+mkdir -p secrets
+printf '%s' 'your-gmo-api-key' > secrets/gmo_api_key
+printf '%s' 'your-gmo-api-secret' > secrets/gmo_api_secret
+printf '%s' 'https://discord.com/api/webhooks/...' > secrets/discord_webhook_url
+docker-compose up -d --build
+```
+
 ## 障害時の一次確認
 
 ```bash
