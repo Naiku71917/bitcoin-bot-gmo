@@ -7,7 +7,7 @@
 
 ## エージェント向け参照順
 - まず `AGENTS.md` を読む（作業ルールとSkill選択の入口）。
-- **全作業で Serena MCP を必ず使い**、`.github/serena-instructions.md` を先に確認する。
+- **全作業で Serena MCP を必ず使い**、`.github/instructions/serena-instructions.md` を先に確認する。
 - 次に変更内容に応じた Skill を読む:
   - `.github/skills/run-complete-contract/SKILL.md`
   - `.github/skills/config-validation/SKILL.md`
@@ -55,7 +55,7 @@
   - `docker compose up -d`（`run_live` が書く `var/artifacts/heartbeat.txt` をhealthcheckで監視）
 
 ## Skill利用の指針
-- Serena MCP での調査・読取手順は `.github/serena-instructions.md` を基準にする。
+- Serena MCP での調査・読取手順は `.github/instructions/serena-instructions.md` を基準にする。
 - run完了ペイロードや通知仕様を変更する場合は `run-complete-contract` を適用。
 - 設定項目の追加・制約変更は `config-validation` を適用。
 - mode分岐やrunner変更は `pipeline-mode-changes` を適用。

@@ -4,7 +4,7 @@
 
 ## 読み順（必須）
 1. `.github/copilot-instructions.md`
-2. `.github/serena-instructions.md`
+2. `.github/instructions/serena-instructions.md`
 3. この `AGENTS.md`
 4. 目的に合う Skill（`.github/skills/*/SKILL.md`）
 
@@ -12,7 +12,7 @@
 - **全作業で Serena MCP を必ず利用**し、対象コード理解を Serena 経由で行う。
 - セッション開始時は Serena のオンボーディング状態を確認し、未実施なら先に実施する。
 - Serena が使えない場合は、その旨を明示したうえでユーザー確認後に最小仮説で進める。
-- 詳細手順は `.github/serena-instructions.md` に従う。
+- 詳細手順は `.github/instructions/serena-instructions.md` に従う。
 
 ## まず守るべき固定契約
 - `main.run` の固定フローを壊さない:
