@@ -17,6 +17,7 @@ venv/
 .coverage
 htmlcov/
 .vscode/
+.serena/
 
 # Runtime artifacts
 var/**
