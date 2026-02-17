@@ -13,6 +13,7 @@ class RuntimeSettings:
     mode: Mode = "live"
     profile: str = "default"
     interval_seconds: int = 300
+    execute_orders: bool = False
 
 
 @dataclass(slots=True)

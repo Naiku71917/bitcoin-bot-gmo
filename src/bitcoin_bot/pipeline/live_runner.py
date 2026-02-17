@@ -21,6 +21,7 @@ def _default_risk_snapshot() -> dict[str, float]:
 def run_live(
     config: RuntimeConfig, risk_snapshot: dict[str, float] | None = None
 ) -> dict:
+    execute_orders_enabled = config.runtime.execute_orders
     emit_run_progress(
         artifacts_dir=config.paths.artifacts_dir,
         mode="live",
@@ -49,13 +50,14 @@ def run_live(
         current_leverage=snapshot["current_leverage"],
         current_wallet_drift=snapshot["current_wallet_drift"],
     )
+    stop_reason_codes = list(guard_result["reason_codes"])
+    if not execute_orders_enabled:
+        stop_reason_codes.append("execute_orders_disabled")
     emit_run_progress(
         artifacts_dir=config.paths.artifacts_dir,
         mode="live",
         status=guard_result["status"],
-        last_error=guard_result["reason_codes"][0]
-        if guard_result["reason_codes"]
-        else None,
+        last_error=stop_reason_codes[0] if stop_reason_codes else None,
         monitor_status="active" if guard_result["status"] == "success" else "degraded",
     )
 
@@ -65,7 +67,8 @@ def run_live(
             "mode": "live",
             "symbol": config.exchange.symbol,
             "product_type": config.exchange.product_type,
-            "stop_reason_codes": guard_result["reason_codes"],
+            "execute_orders": execute_orders_enabled,
+            "stop_reason_codes": stop_reason_codes,
             "risk_guards": guard_result,
             "monitor_summary": {
                 "status": "active"

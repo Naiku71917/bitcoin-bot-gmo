@@ -12,6 +12,11 @@ def validate_config(config: RuntimeConfig) -> RuntimeConfig:
     if config.runtime.mode not in ALLOWED_MODES:
         raise ValueError(f"Invalid runtime.mode: {config.runtime.mode}")
 
+    if not isinstance(config.runtime.execute_orders, bool):
+        raise ValueError(
+            f"Invalid runtime.execute_orders: {config.runtime.execute_orders}"
+        )
+
     if config.exchange.product_type not in ALLOWED_PRODUCT_TYPES:
         raise ValueError(
             f"Invalid exchange.product_type: {config.exchange.product_type}"
