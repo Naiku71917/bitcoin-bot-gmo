@@ -4,12 +4,28 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from bitcoin_bot.exchange.protocol import ExchangeProtocol, NormalizedOrder
+from bitcoin_bot.exchange.protocol import (
+    ExchangeProtocol,
+    NormalizedBalance,
+    NormalizedKline,
+    NormalizedOrder,
+    NormalizedOrderState,
+    NormalizedPosition,
+    ProductType,
+)
 
 
 @dataclass(slots=True)
 class GMOAdapter(ExchangeProtocol):
-    product_type: str
+    product_type: ProductType
+
+    def __post_init__(self) -> None:
+        if self.product_type not in {"spot", "leverage"}:
+            raise ValueError(f"Unsupported product_type: {self.product_type}")
+
+    @property
+    def _is_leverage(self) -> bool:
+        return self.product_type == "leverage"
 
     def fetch_klines(
         self,
@@ -18,26 +34,68 @@ class GMOAdapter(ExchangeProtocol):
         start: datetime,
         end: datetime,
         limit: int,
-    ) -> list[dict[str, Any]]:
+    ) -> list[NormalizedKline]:
         return []
 
     def fetch_ticker(self, symbol: str) -> dict[str, Any]:
         return {"symbol": symbol}
 
-    def fetch_balances(self, account_type: str) -> dict[str, Any]:
-        return {"account_type": account_type, "balances": []}
+    def fetch_balances(self, account_type: str) -> list[NormalizedBalance]:
+        return [
+            NormalizedBalance(
+                asset="JPY",
+                total=0.0,
+                available=0.0,
+                account_type=account_type,
+                product_type=self.product_type,
+            )
+        ]
 
-    def fetch_positions(self, symbol: str) -> list[dict[str, Any]]:
+    def fetch_positions(self, symbol: str) -> list[NormalizedPosition]:
         return []
 
-    def place_order(self, order_request: NormalizedOrder) -> dict[str, Any]:
-        return {"status": "accepted", "client_order_id": order_request.client_order_id}
+    def place_order(self, order_request: NormalizedOrder) -> NormalizedOrderState:
+        reduce_only = order_request.reduce_only if self._is_leverage else None
+        return NormalizedOrderState(
+            order_id=order_request.client_order_id,
+            status="accepted",
+            symbol=order_request.symbol,
+            side=order_request.side,
+            order_type=order_request.order_type,
+            qty=order_request.qty,
+            price=order_request.price,
+            product_type=self.product_type,
+            reduce_only=reduce_only,
+            raw={"exchange": "gmo"},
+        )
 
-    def cancel_order(self, order_id: str) -> dict[str, Any]:
-        return {"status": "cancelled", "order_id": order_id}
+    def cancel_order(self, order_id: str) -> NormalizedOrderState:
+        return NormalizedOrderState(
+            order_id=order_id,
+            status="cancelled",
+            symbol=None,
+            side=None,
+            order_type=None,
+            qty=None,
+            price=None,
+            product_type=self.product_type,
+            reduce_only=None,
+            raw={"exchange": "gmo"},
+        )
 
-    def fetch_order(self, order_id: str) -> dict[str, Any]:
-        return {"order_id": order_id, "status": "unknown"}
+    def fetch_order(self, order_id: str) -> NormalizedOrderState:
+        return NormalizedOrderState(
+            order_id=order_id,
+            status="unknown",
+            symbol=None,
+            side=None,
+            order_type=None,
+            qty=None,
+            price=None,
+            product_type=self.product_type,
+            reduce_only=None,
+            raw={"exchange": "gmo"},
+        )
 
     def stream_order_events(self) -> Any:
         return iter(())

@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
+
+
+ProductType = Literal["spot", "leverage"]
 
 
 @dataclass(slots=True)
 class NormalizedOrder:
     exchange: str
-    product_type: str
+    product_type: ProductType
     symbol: str
     side: str
     order_type: str
@@ -37,6 +40,50 @@ class NormalizedError:
     message: str
 
 
+@dataclass(slots=True)
+class NormalizedKline:
+    timestamp: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+
+@dataclass(slots=True)
+class NormalizedBalance:
+    asset: str
+    total: float
+    available: float
+    account_type: str
+    product_type: ProductType
+
+
+@dataclass(slots=True)
+class NormalizedPosition:
+    symbol: str
+    side: str
+    qty: float
+    entry_price: float | None
+    leverage: float | None
+    unrealized_pnl: float | None
+    product_type: ProductType
+
+
+@dataclass(slots=True)
+class NormalizedOrderState:
+    order_id: str
+    status: str
+    symbol: str | None
+    side: str | None
+    order_type: str | None
+    qty: float | None
+    price: float | None
+    product_type: ProductType
+    reduce_only: bool | None
+    raw: dict[str, Any]
+
+
 @runtime_checkable
 class ExchangeProtocol(Protocol):
     def fetch_klines(
@@ -46,19 +93,19 @@ class ExchangeProtocol(Protocol):
         start: datetime,
         end: datetime,
         limit: int,
-    ) -> list[dict[str, Any]]: ...
+    ) -> list[NormalizedKline]: ...
 
     def fetch_ticker(self, symbol: str) -> dict[str, Any]: ...
 
-    def fetch_balances(self, account_type: str) -> dict[str, Any]: ...
+    def fetch_balances(self, account_type: str) -> list[NormalizedBalance]: ...
 
-    def fetch_positions(self, symbol: str) -> list[dict[str, Any]]: ...
+    def fetch_positions(self, symbol: str) -> list[NormalizedPosition]: ...
 
-    def place_order(self, order_request: NormalizedOrder) -> dict[str, Any]: ...
+    def place_order(self, order_request: NormalizedOrder) -> NormalizedOrderState: ...
 
-    def cancel_order(self, order_id: str) -> dict[str, Any]: ...
+    def cancel_order(self, order_id: str) -> NormalizedOrderState: ...
 
-    def fetch_order(self, order_id: str) -> dict[str, Any]: ...
+    def fetch_order(self, order_id: str) -> NormalizedOrderState: ...
 
     def stream_order_events(self) -> Any: ...
 
