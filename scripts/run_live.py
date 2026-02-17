@@ -2,36 +2,73 @@ from __future__ import annotations
 
 import os
 import signal
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Thread
 from typing import Callable
 
 from bitcoin_bot.main import run
-from bitcoin_bot.telemetry.reporters import emit_run_progress
+from bitcoin_bot.telemetry.reporters import emit_run_progress, monitor_status_to_value
 
 
-class _HealthHandler(BaseHTTPRequestHandler):
+@dataclass(slots=True)
+class RuntimeMetricsState:
     stop_event: Event
+    run_loop_total: int = 0
+    run_loop_failures_total: int = 0
+    monitor_status: str = "active"
+
+
+def _render_metrics(state: RuntimeMetricsState) -> str:
+    lines = [
+        "# HELP run_loop_total Total number of loop iterations.",
+        "# TYPE run_loop_total counter",
+        f"run_loop_total {state.run_loop_total}",
+        "# HELP run_loop_failures_total Total number of loop failures.",
+        "# TYPE run_loop_failures_total counter",
+        f"run_loop_failures_total {state.run_loop_failures_total}",
+        "# HELP monitor_status Current monitor status as numeric gauge (degraded=0, active=1, reconnecting=2).",
+        "# TYPE monitor_status gauge",
+        f'monitor_status{{status="{state.monitor_status}"}} {monitor_status_to_value(state.monitor_status)}',
+    ]
+    return "\n".join(lines) + "\n"
+
+
+class _RuntimeHandler(BaseHTTPRequestHandler):
+    runtime_state: RuntimeMetricsState
 
     def do_GET(self) -> None:  # noqa: N802
+        if self.path == "/healthz":
+            status_code = 200 if not self.runtime_state.stop_event.is_set() else 503
+            self.send_response(status_code)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"ok" if status_code == 200 else b"shutting_down")
+            return
+
+        if self.path == "/metrics":
+            payload = _render_metrics(self.runtime_state).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
         if self.path != "/healthz":
             self.send_response(404)
             self.end_headers()
             return
 
-        status_code = 200 if not self.stop_event.is_set() else 503
-        self.send_response(status_code)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(b"ok" if status_code == 200 else b"shutting_down")
-
     def log_message(self, format: str, *args: object) -> None:
         return
 
 
-def _run_health_server(stop_event: Event, port: int) -> ThreadingHTTPServer:
-    _HealthHandler.stop_event = stop_event
-    server = ThreadingHTTPServer(("0.0.0.0", port), _HealthHandler)
+def _run_runtime_server(
+    runtime_state: RuntimeMetricsState, port: int
+) -> ThreadingHTTPServer:
+    _RuntimeHandler.runtime_state = runtime_state
+    server = ThreadingHTTPServer(("0.0.0.0", port), _RuntimeHandler)
     server.daemon_threads = True
     thread = Thread(target=server.serve_forever, kwargs={"poll_interval": 0.5})
     thread.daemon = True
@@ -55,15 +92,19 @@ def _run_daemon_loop(
     interval_seconds: int,
     max_reconnect_retries: int,
     reconnect_wait_seconds: int,
+    runtime_state: RuntimeMetricsState | None = None,
     run_func: Callable[..., dict] | None = None,
 ) -> tuple[int, int]:
     execute_run = run_func or run
     exit_code = 0
     reconnect_count = 0
+    metrics_state = runtime_state or RuntimeMetricsState(stop_event=stop_event)
 
     while not stop_event.is_set():
+        metrics_state.run_loop_total += 1
         try:
             execute_run(mode="live", config_path=config_path)
+            metrics_state.monitor_status = "active"
             if reconnect_count > 0:
                 emit_run_progress(
                     artifacts_dir=artifacts_dir,
@@ -75,6 +116,8 @@ def _run_daemon_loop(
                 )
         except Exception as exc:
             reconnect_count += 1
+            metrics_state.run_loop_failures_total += 1
+            metrics_state.monitor_status = "reconnecting"
             emit_run_progress(
                 artifacts_dir=artifacts_dir,
                 mode="live",
@@ -84,6 +127,7 @@ def _run_daemon_loop(
                 reconnect_count=reconnect_count,
             )
             if reconnect_count > max_reconnect_retries:
+                metrics_state.monitor_status = "degraded"
                 emit_run_progress(
                     artifacts_dir=artifacts_dir,
                     mode="live",
@@ -115,7 +159,10 @@ def main() -> int:
     health_port = int(os.getenv("HEALTH_PORT", "9754"))
     artifacts_dir = os.getenv("ARTIFACTS_DIR", "./var/artifacts")
 
-    health_server = _run_health_server(stop_event, health_port)
+    runtime_state = RuntimeMetricsState(stop_event=stop_event)
+    health_server = _run_runtime_server(runtime_state, health_port)
+    exit_code = 1
+    reconnect_count = 0
     try:
         exit_code, reconnect_count = _run_daemon_loop(
             stop_event=stop_event,
@@ -124,10 +171,12 @@ def main() -> int:
             interval_seconds=interval_seconds,
             max_reconnect_retries=max_reconnect_retries,
             reconnect_wait_seconds=reconnect_wait_seconds,
+            runtime_state=runtime_state,
         )
     finally:
         final_status = "failed" if exit_code != 0 else "degraded"
         final_error = "runtime_exception" if exit_code != 0 else "shutdown_signal"
+        runtime_state.monitor_status = "degraded"
         emit_run_progress(
             artifacts_dir=artifacts_dir,
             mode="live",

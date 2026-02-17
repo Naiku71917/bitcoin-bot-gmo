@@ -9,6 +9,15 @@ from bitcoin_bot.telemetry.discord import send_discord_webhook
 from bitcoin_bot.utils.io import atomic_dump_json
 
 
+def monitor_status_to_value(status: str) -> int:
+    mapping = {
+        "active": 1,
+        "reconnecting": 2,
+        "degraded": 0,
+    }
+    return mapping.get(status, 0)
+
+
 def emit_run_progress(
     *,
     artifacts_dir: str,

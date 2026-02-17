@@ -4,6 +4,12 @@ services:
       context: .
       dockerfile: Dockerfile
     command: ["python", "scripts/run_live.py"]
+    environment:
+      HEALTH_PORT: "9754"
+      LIVE_MAX_RECONNECT_RETRIES: "3"
+      LIVE_RECONNECT_WAIT_SECONDS: "5"
+    ports:
+      - "9754:9754"
     volumes:
       - ./var:/app/var
       - ./configs:/app/configs:ro
