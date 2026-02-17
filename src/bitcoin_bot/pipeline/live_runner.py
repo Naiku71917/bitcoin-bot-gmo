@@ -3,16 +3,41 @@ from __future__ import annotations
 from pathlib import Path
 
 from bitcoin_bot.config.models import RuntimeConfig
+from bitcoin_bot.optimizer.gates import evaluate_risk_guards
 
 
-def run_live(config: RuntimeConfig) -> dict:
-    heartbeat = Path(config.paths.artifacts_dir) / "heartbeat.txt"
-    heartbeat.write_text("ok", encoding="utf-8")
+def _default_risk_snapshot() -> dict[str, float]:
     return {
-        "status": "success",
+        "current_drawdown": 0.0,
+        "current_daily_loss": 0.0,
+        "current_position_size": 0.0,
+    }
+
+
+def run_live(
+    config: RuntimeConfig, risk_snapshot: dict[str, float] | None = None
+) -> dict:
+    heartbeat = Path(config.paths.artifacts_dir) / "heartbeat.txt"
+    heartbeat.parent.mkdir(parents=True, exist_ok=True)
+    heartbeat.write_text("ok", encoding="utf-8")
+
+    snapshot = risk_snapshot or _default_risk_snapshot()
+    guard_result = evaluate_risk_guards(
+        max_drawdown=config.risk.max_drawdown,
+        daily_loss_limit=config.risk.daily_loss_limit,
+        max_position_size=config.risk.max_position_size,
+        current_drawdown=snapshot["current_drawdown"],
+        current_daily_loss=snapshot["current_daily_loss"],
+        current_position_size=snapshot["current_position_size"],
+    )
+
+    return {
+        "status": guard_result["status"],
         "summary": {
             "mode": "live",
             "symbol": config.exchange.symbol,
             "product_type": config.exchange.product_type,
+            "stop_reason_codes": guard_result["reason_codes"],
+            "risk_guards": guard_result,
         },
     }
