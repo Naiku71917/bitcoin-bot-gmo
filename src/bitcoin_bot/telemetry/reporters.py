@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from bitcoin_bot.optimizer.orchestrator import build_optimization_snapshot
 from bitcoin_bot.telemetry.discord import send_discord_webhook
 from bitcoin_bot.utils.io import atomic_dump_json
+from bitcoin_bot.utils.logging import append_audit_event
 
 
 def monitor_status_to_value(status: str) -> int:
@@ -52,6 +54,18 @@ def emit_run_progress(
         progress["validation"] = validation
     output_path = f"{artifacts_dir}/run_progress.json"
     atomic_dump_json(output_path, progress)
+    if validation is not None:
+        logs_dir = str(Path(artifacts_dir).parent / "logs")
+        append_audit_event(
+            logs_dir=logs_dir,
+            event_type="startup_validation",
+            payload={
+                "mode": mode,
+                "status": status,
+                "monitor_status": resolved_monitor_status,
+                "validation": validation,
+            },
+        )
     return progress
 
 

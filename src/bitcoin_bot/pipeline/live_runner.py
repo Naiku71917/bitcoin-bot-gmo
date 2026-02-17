@@ -13,6 +13,7 @@ from bitcoin_bot.exchange.protocol import (
 )
 from bitcoin_bot.optimizer.gates import evaluate_risk_guards
 from bitcoin_bot.telemetry.reporters import emit_run_progress
+from bitcoin_bot.utils.logging import append_audit_event
 
 
 class OrderPlacerProtocol(Protocol):
@@ -76,6 +77,15 @@ def run_live(
             use_http=False,
         )
         order_attempted = True
+        append_audit_event(
+            logs_dir=config.paths.logs_dir,
+            event_type="order_attempt",
+            payload={
+                "symbol": config.exchange.symbol,
+                "product_type": config.exchange.product_type,
+                "execute_orders": execute_orders_enabled,
+            },
+        )
         order_result = adapter.place_order(
             NormalizedOrder(
                 exchange=config.exchange.name,
@@ -93,8 +103,27 @@ def run_live(
             )
         )
         order_status = order_result.status
+        append_audit_event(
+            logs_dir=config.paths.logs_dir,
+            event_type="order_result",
+            payload={
+                "symbol": config.exchange.symbol,
+                "product_type": config.exchange.product_type,
+                "status": order_status,
+                "order_id": order_result.order_id,
+            },
+        )
     else:
         order_status = "skipped_due_to_risk"
+    if guard_result["status"] != "success":
+        append_audit_event(
+            logs_dir=config.paths.logs_dir,
+            event_type="risk_stop",
+            payload={
+                "status": guard_result["status"],
+                "reason_codes": guard_result["reason_codes"],
+            },
+        )
 
     reason_codes = list(stop_reason_codes)
     emit_run_progress(
