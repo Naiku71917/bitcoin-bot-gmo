@@ -387,6 +387,147 @@ Exchange Protocol / GMO Adapter を、仕様書準拠の不足分まで拡張し
 - 契約（run_complete/marker/Discord非致命）を維持
 ```
 
+## 2.16 PR-16: Backtest結果メトリクス契約
+
+```text
+Backtest runner を、評価指標の最小契約まで実装してください。
+
+対象:
+- src/bitcoin_bot/pipeline/backtest_runner.py
+- src/bitcoin_bot/optimizer/orchestrator.py
+- tests/test_backtest_metrics_contract.py（新規可）
+
+必須仕様:
+- backtest summary に最低限以下を保持
+  - return
+  - max_drawdown
+  - win_rate
+  - profit_factor
+  - trade_count
+- optimization.score に backtest 指標を使った最小スコアを反映
+- 既存 run_complete 契約を壊さない
+
+受け入れ条件:
+- backtest メトリクス契約テスト通過
+- run_complete の optimization.score が欠落しない
+```
+
+## 2.17 PR-17: Paperモード最小実運用化
+
+```text
+Paper runner を、注文擬似実行の最低限契約まで実装してください。
+
+対象:
+- src/bitcoin_bot/pipeline/paper_runner.py
+- src/bitcoin_bot/strategy/core.py
+- tests/test_paper_runner_contract.py（新規可）
+
+必須仕様:
+- strategy decision を受けて paper 注文イベントを生成
+- summary に以下を保持
+  - action
+  - confidence
+  - order_count
+  - reason_codes
+- hold 判定時は注文を発行しない
+
+受け入れ条件:
+- hold / buy / sell の分岐テスト通過
+- summary 契約テスト通過
+```
+
+## 2.18 PR-18: Exchangeエラー正規化と再試行方針
+
+```text
+GMO adapter の失敗系を仕様どおり正規化してください。
+
+対象:
+- src/bitcoin_bot/exchange/protocol.py
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- tests/test_exchange_error_normalization.py（新規可）
+
+必須仕様:
+- NormalizedError を実際に返せる経路を追加
+- category を最低限以下で分類
+  - auth
+  - rate_limit
+  - validation
+  - network
+  - exchange
+- retryable 判定を保持
+
+受け入れ条件:
+- 代表的な失敗ケースの正規化テスト通過
+- 既存の spot/leverage 契約テストを壊さない
+```
+
+## 2.19 PR-19: リスクガード拡張（不足3項目）
+
+```text
+既存のリスクガードに不足項目を追加してください。
+
+対象:
+- src/bitcoin_bot/optimizer/gates.py
+- src/bitcoin_bot/pipeline/live_runner.py
+- tests/test_risk_guards.py
+
+必須仕様:
+- 既存3ガードに加えて以下を追加
+  - 1トレードあたり許容損失
+  - レバレッジ上限
+  - wallet drift
+- 閾値超過時は degraded または abort を返し、reason_codes を保持
+- run サマリへ停止理由が欠落しない
+
+受け入れ条件:
+- 追加3ガードの閾値超過テスト通過
+- 既存ガードテストを壊さない
+```
+
+## 2.20 PR-20: ライブ監視メトリクス契約
+
+```text
+常駐運用の監視メトリクスを run_progress/run_complete 契約へ追加してください。
+
+対象:
+- src/bitcoin_bot/telemetry/reporters.py
+- src/bitcoin_bot/pipeline/live_runner.py
+- scripts/run_live.py
+- tests/test_live_monitor_contract.py（新規可）
+
+必須仕様:
+- monitor status を保持
+  - active
+  - reconnecting
+  - degraded
+- run_progress に monitor 関連フィールドを追加
+- run_complete の pipeline_summary に監視要約を残す
+
+受け入れ条件:
+- monitor status 遷移テスト通過
+- run_complete / marker 契約を壊さない
+```
+
+## 2.21 PR-21: 運用ドキュメント更新（Runbook最小）
+
+```text
+現行実装に合わせて運用ドキュメントを最小更新してください。
+
+対象:
+- docs/architecture.md
+- docs/operations.md
+- README.md
+
+必須仕様:
+- 現在の run_progress / run_complete / healthcheck 実装と一致
+- 日常運用コマンド（起動/停止/確認）を明記
+- 障害時の一次切り分け（ログ, artifacts, health）を短く記載
+
+受け入れ条件:
+- 記載内容が実装と矛盾しない
+- pre-commit / pytest が通る
+```
+
 ---
 
 ## 3. PRレビュー時のチェックリスト
