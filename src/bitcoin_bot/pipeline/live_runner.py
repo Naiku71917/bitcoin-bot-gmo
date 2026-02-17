@@ -12,6 +12,7 @@ from bitcoin_bot.exchange.protocol import (
     ProductType,
 )
 from bitcoin_bot.optimizer.gates import evaluate_risk_guards
+from bitcoin_bot.strategy.core import DecisionHooks, IndicatorInput, decide_action
 from bitcoin_bot.telemetry.reporters import emit_run_progress
 from bitcoin_bot.utils.logging import append_audit_event
 
@@ -28,6 +29,11 @@ def _default_risk_snapshot() -> dict[str, float]:
         "current_trade_loss": 0.0,
         "current_leverage": 0.0,
         "current_wallet_drift": 0.0,
+        "close": 100.0,
+        "ema_fast": 101.0,
+        "ema_slow": 100.0,
+        "rsi": 50.0,
+        "atr": 1.0,
     }
 
 
@@ -66,11 +72,21 @@ def run_live(
         current_wallet_drift=snapshot["current_wallet_drift"],
     )
     stop_reason_codes = list(guard_result["reason_codes"])
+    decision = decide_action(
+        IndicatorInput(
+            close=snapshot["close"],
+            ema_fast=snapshot["ema_fast"],
+            ema_slow=snapshot["ema_slow"],
+            rsi=snapshot["rsi"],
+            atr=max(snapshot["atr"], 1e-9),
+        ),
+        hooks=DecisionHooks(min_confidence=config.strategy.min_confidence),
+    )
     order_attempted = False
     order_status = "not_attempted"
     if not execute_orders_enabled:
         stop_reason_codes.append("execute_orders_disabled")
-    elif guard_result["status"] == "success":
+    elif guard_result["status"] == "success" and decision.action in {"buy", "sell"}:
         adapter = exchange_adapter or GMOAdapter(
             product_type=cast(ProductType, config.exchange.product_type),
             api_base_url=config.exchange.api_base_url,
@@ -91,7 +107,7 @@ def run_live(
                 exchange=config.exchange.name,
                 product_type=cast(ProductType, config.exchange.product_type),
                 symbol=config.exchange.symbol,
-                side="buy",
+                side=decision.action,
                 order_type="market",
                 time_in_force="GTC",
                 qty=0.01,
@@ -109,8 +125,22 @@ def run_live(
             payload={
                 "symbol": config.exchange.symbol,
                 "product_type": config.exchange.product_type,
+                "decision_action": decision.action,
                 "status": order_status,
                 "order_id": order_result.order_id,
+            },
+        )
+    elif guard_result["status"] == "success":
+        order_status = "skipped_by_strategy"
+        append_audit_event(
+            logs_dir=config.paths.logs_dir,
+            event_type="order_attempt",
+            payload={
+                "symbol": config.exchange.symbol,
+                "product_type": config.exchange.product_type,
+                "execute_orders": execute_orders_enabled,
+                "decision_action": decision.action,
+                "skipped": True,
             },
         )
     else:
@@ -125,12 +155,16 @@ def run_live(
             },
         )
 
-    reason_codes = list(stop_reason_codes)
+    reason_codes = [*decision.reason_codes, *stop_reason_codes]
     emit_run_progress(
         artifacts_dir=config.paths.artifacts_dir,
         mode="live",
         status=guard_result["status"],
-        last_error=reason_codes[0] if reason_codes else None,
+        last_error=(
+            stop_reason_codes[0]
+            if stop_reason_codes
+            else (reason_codes[0] if reason_codes else None)
+        ),
         monitor_status="active" if guard_result["status"] == "success" else "degraded",
     )
 
@@ -141,6 +175,8 @@ def run_live(
             "symbol": config.exchange.symbol,
             "product_type": config.exchange.product_type,
             "execute_orders": execute_orders_enabled,
+            "decision_action": decision.action,
+            "confidence": decision.confidence,
             "order_attempted": order_attempted,
             "order_status": order_status,
             "reason_codes": reason_codes,

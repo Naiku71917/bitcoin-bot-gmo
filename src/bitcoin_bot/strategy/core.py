@@ -125,15 +125,28 @@ def decide_action(
     )
 
 
-def hold_decision() -> StrategyDecision:
-    indicators = IndicatorInput(
-        close=0.0, ema_fast=0.0, ema_slow=0.0, rsi=50.0, atr=0.0
+def hold_decision(
+    indicators: IndicatorInput | None = None,
+    hooks: DecisionHooks | None = None,
+) -> StrategyDecision:
+    resolved_indicators = indicators or IndicatorInput(
+        close=100.0,
+        ema_fast=100.0,
+        ema_slow=100.0,
+        rsi=50.0,
+        atr=1.0,
     )
+    resolved_hooks = hooks or DecisionHooks()
+
+    decision = decide_action(resolved_indicators, resolved_hooks)
+    if decision.action == "hold":
+        return decision
+
     return StrategyDecision(
         action="hold",
-        confidence=0.0,
-        reason_codes=["not_implemented"],
-        risk=_build_risk("hold", indicators, max_holding_bars=0),
+        confidence=decision.confidence,
+        reason_codes=[*decision.reason_codes, "forced_hold"],
+        risk=_build_risk("hold", resolved_indicators, resolved_hooks.max_holding_bars),
     )
 
 
