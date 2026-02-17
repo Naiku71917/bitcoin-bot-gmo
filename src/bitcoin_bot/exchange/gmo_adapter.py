@@ -242,6 +242,53 @@ class GMOAdapter(ExchangeProtocol):
         end: datetime,
         limit: int,
     ) -> list[NormalizedKline]:
+        if self.use_http:
+            payload = self._request_json(
+                method="GET",
+                path="/public/v1/klines",
+                params={
+                    "symbol": symbol,
+                    "interval": timeframe,
+                    "limit": str(limit),
+                },
+            )
+            if isinstance(payload, NormalizedError):
+                return []
+
+            klines_raw = payload.get("data", [])
+            if not isinstance(klines_raw, list):
+                return []
+
+            normalized: list[NormalizedKline] = []
+            for row in klines_raw:
+                timestamp = self._to_datetime(
+                    row.get("timestamp") or row.get("openTime") or row.get("time")
+                )
+                open_price = self._to_float(row.get("open"))
+                high_price = self._to_float(row.get("high"))
+                low_price = self._to_float(row.get("low"))
+                close_price = self._to_float(row.get("close"))
+                volume = self._to_float(row.get("volume"))
+                if (
+                    timestamp is None
+                    or open_price is None
+                    or high_price is None
+                    or low_price is None
+                    or close_price is None
+                    or volume is None
+                ):
+                    continue
+                normalized.append(
+                    NormalizedKline(
+                        timestamp=timestamp,
+                        open=open_price,
+                        high=high_price,
+                        low=low_price,
+                        close=close_price,
+                        volume=volume,
+                    )
+                )
+            return normalized
         return []
 
     def fetch_ticker(self, symbol: str) -> NormalizedTicker | NormalizedError:
@@ -320,6 +367,41 @@ class GMOAdapter(ExchangeProtocol):
         ]
 
     def fetch_positions(self, symbol: str) -> list[NormalizedPosition]:
+        if self.use_http:
+            payload = self._request_json(
+                method="GET",
+                path="/private/v1/openPositions",
+                params={"symbol": symbol},
+                auth=True,
+            )
+            if isinstance(payload, NormalizedError):
+                return []
+
+            positions_raw = payload.get("data", [])
+            if not isinstance(positions_raw, list):
+                return []
+
+            normalized: list[NormalizedPosition] = []
+            for row in positions_raw:
+                qty = self._to_float(row.get("size") or row.get("qty"))
+                if qty is None:
+                    continue
+                normalized.append(
+                    NormalizedPosition(
+                        symbol=str(row.get("symbol", symbol)),
+                        side=str(row.get("side", "buy")),
+                        qty=qty,
+                        entry_price=self._to_float(
+                            row.get("price") or row.get("entryPrice")
+                        ),
+                        leverage=self._to_float(row.get("leverage")),
+                        unrealized_pnl=self._to_float(
+                            row.get("lossGain") or row.get("unrealized_pnl")
+                        ),
+                        product_type=self.product_type,
+                    )
+                )
+            return normalized
         return []
 
     def place_order(self, order_request: NormalizedOrder) -> NormalizedOrderState:
@@ -356,6 +438,53 @@ class GMOAdapter(ExchangeProtocol):
         )
 
     def fetch_order(self, order_id: str) -> NormalizedOrderState:
+        if self.use_http:
+            payload = self._request_json(
+                method="GET",
+                path="/private/v1/activeOrders",
+                params={"orderId": order_id},
+                auth=True,
+            )
+            if isinstance(payload, NormalizedError):
+                return NormalizedOrderState(
+                    order_id=order_id,
+                    status="error",
+                    symbol=None,
+                    side=None,
+                    order_type=None,
+                    qty=None,
+                    price=None,
+                    product_type=self.product_type,
+                    reduce_only=None,
+                    raw={
+                        "exchange": "gmo",
+                        "error": {
+                            "category": payload.category,
+                            "retryable": payload.retryable,
+                            "source_code": payload.source_code,
+                            "message": payload.message,
+                        },
+                    },
+                )
+
+            orders_raw = payload.get("data", [])
+            row = orders_raw[0] if isinstance(orders_raw, list) and orders_raw else {}
+            return NormalizedOrderState(
+                order_id=str(row.get("orderId", order_id)),
+                status=str(row.get("status", "unknown")),
+                symbol=row.get("symbol") if row.get("symbol") is not None else None,
+                side=row.get("side") if row.get("side") is not None else None,
+                order_type=row.get("orderType")
+                if row.get("orderType") is not None
+                else None,
+                qty=self._to_float(row.get("size") or row.get("qty")),
+                price=self._to_float(row.get("price")),
+                product_type=self.product_type,
+                reduce_only=(
+                    bool(row.get("settleType")) if self._is_leverage else None
+                ),
+                raw={"exchange": "gmo", "payload": row},
+            )
         return NormalizedOrderState(
             order_id=order_id,
             status="unknown",
