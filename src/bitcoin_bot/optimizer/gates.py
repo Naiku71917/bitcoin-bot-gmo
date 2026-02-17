@@ -6,9 +6,15 @@ def evaluate_risk_guards(
     max_drawdown: float,
     daily_loss_limit: float,
     max_position_size: float,
+    max_trade_loss: float,
+    max_leverage: float,
+    max_wallet_drift: float,
     current_drawdown: float,
     current_daily_loss: float,
     current_position_size: float,
+    current_trade_loss: float,
+    current_leverage: float,
+    current_wallet_drift: float,
 ) -> dict:
     reason_codes: list[str] = []
     status = "success"
@@ -27,6 +33,20 @@ def evaluate_risk_guards(
             status = "degraded"
         reason_codes.append("max_position_size_exceeded")
 
+    if current_trade_loss > max_trade_loss:
+        status = "abort"
+        reason_codes.append("max_trade_loss_exceeded")
+
+    if current_leverage > max_leverage:
+        if status != "abort":
+            status = "degraded"
+        reason_codes.append("max_leverage_exceeded")
+
+    if current_wallet_drift > max_wallet_drift:
+        if status != "abort":
+            status = "degraded"
+        reason_codes.append("wallet_drift_exceeded")
+
     return {
         "status": status,
         "reason_codes": reason_codes,
@@ -34,11 +54,17 @@ def evaluate_risk_guards(
             "current_drawdown": current_drawdown,
             "current_daily_loss": current_daily_loss,
             "current_position_size": current_position_size,
+            "current_trade_loss": current_trade_loss,
+            "current_leverage": current_leverage,
+            "current_wallet_drift": current_wallet_drift,
         },
         "limits": {
             "max_drawdown": max_drawdown,
             "daily_loss_limit": daily_loss_limit,
             "max_position_size": max_position_size,
+            "max_trade_loss": max_trade_loss,
+            "max_leverage": max_leverage,
+            "max_wallet_drift": max_wallet_drift,
         },
     }
 

@@ -12,6 +12,9 @@ def _default_risk_snapshot() -> dict[str, float]:
         "current_drawdown": 0.0,
         "current_daily_loss": 0.0,
         "current_position_size": 0.0,
+        "current_trade_loss": 0.0,
+        "current_leverage": 0.0,
+        "current_wallet_drift": 0.0,
     }
 
 
@@ -28,14 +31,22 @@ def run_live(
     heartbeat.parent.mkdir(parents=True, exist_ok=True)
     heartbeat.write_text("ok", encoding="utf-8")
 
-    snapshot = risk_snapshot or _default_risk_snapshot()
+    snapshot = _default_risk_snapshot()
+    if risk_snapshot:
+        snapshot.update(risk_snapshot)
     guard_result = evaluate_risk_guards(
         max_drawdown=config.risk.max_drawdown,
         daily_loss_limit=config.risk.daily_loss_limit,
         max_position_size=config.risk.max_position_size,
+        max_trade_loss=max(config.risk.daily_loss_limit * 0.5, 0.0),
+        max_leverage=config.risk.max_leverage,
+        max_wallet_drift=0.02,
         current_drawdown=snapshot["current_drawdown"],
         current_daily_loss=snapshot["current_daily_loss"],
         current_position_size=snapshot["current_position_size"],
+        current_trade_loss=snapshot["current_trade_loss"],
+        current_leverage=snapshot["current_leverage"],
+        current_wallet_drift=snapshot["current_wallet_drift"],
     )
     emit_run_progress(
         artifacts_dir=config.paths.artifacts_dir,
