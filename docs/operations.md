@@ -2,3 +2,28 @@
 
 - Docker Compose で常駐実行
 - 生成物は `var/artifacts`, ログは `var/logs`
+
+## 日常運用コマンド
+
+```bash
+# 起動（build込み）
+docker-compose up -d --build
+
+# 停止
+docker-compose down
+
+# 稼働/ヘルス確認
+docker-compose ps
+curl -fsS http://127.0.0.1:9754/healthz
+```
+
+## 一次切り分け（短縮版）
+
+- Logs:
+	- `docker-compose logs --tail=200 bot`
+- Artifacts:
+	- `var/artifacts/run_progress.json`（直近ステータス/監視状態）
+	- `var/artifacts/run_complete.json`（終了サマリ/停止理由）
+- Health:
+	- `docker-compose ps` が `healthy` か
+	- `/healthz` が `200` を返すか
