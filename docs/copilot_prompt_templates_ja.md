@@ -835,6 +835,159 @@ run_live 常駐ループに再接続ポリシーを実装し、monitor status �
 - 失敗時終了コード非0 + 段階ログ出力
 ```
 
+## 2.34 PR-34: GMO read API スタブ解消（klines/positions/order）
+
+```text
+実運用に向け、GMO adapter の残スタブを最小実装で解消してください。
+
+対象:
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- src/bitcoin_bot/exchange/protocol.py（必要最小限）
+- tests/test_exchange_read_models_runtime.py（新規可）
+
+必須仕様:
+- 以下の残スタブを最小実装
+  - fetch_klines
+  - fetch_positions
+  - fetch_order
+- 通信失敗時は NormalizedError または既存契約に沿った失敗状態で返す
+- `product_type` の整合を維持
+
+実行コマンド（必須）:
+- pytest -q tests/test_exchange_read_models_runtime.py
+- pytest -q tests/test_exchange_protocol.py
+
+受け入れ条件:
+- read系モデルの契約テスト通過
+- 既存 exchange 契約テスト非破壊
+```
+
+## 2.35 PR-35: Strategy の hold-only スタブ脱却（最小意思決定）
+
+```text
+strategy の `not_implemented` 残存を解消し、最小の本番用判定へ更新してください。
+
+対象:
+- src/bitcoin_bot/strategy/core.py
+- src/bitcoin_bot/pipeline/live_runner.py
+- tests/test_strategy_live_decision_runtime.py（新規可）
+
+必須仕様:
+- `hold_decision()` を実運用向け最小ロジックへ置換
+- ライブ実行時に reason_codes が判定根拠を持つ
+- confidence/risk 契約を維持
+
+実行コマンド（必須）:
+- pytest -q tests/test_strategy_live_decision_runtime.py
+- pytest -q tests/test_strategy_contract.py
+
+受け入れ条件:
+- hold/buy/sell の境界ケースが安定
+- 既存 strategy 契約テストを壊さない
+```
+
+## 2.36 PR-36: Stream状態を monitor status に接続
+
+```text
+監視の実効性を高めるため、exchange stream 状態を monitor status へ反映してください。
+
+対象:
+- scripts/run_live.py
+- src/bitcoin_bot/pipeline/live_runner.py
+- src/bitcoin_bot/telemetry/reporters.py
+- tests/test_stream_monitor_integration.py（新規可）
+
+必須仕様:
+- stream 正常時: monitor_status=active
+- stream 切断検知時: monitor_status=reconnecting
+- 復旧失敗時: monitor_status=degraded
+- run_progress/run_complete の契約を維持
+
+実行コマンド（必須）:
+- pytest -q tests/test_stream_monitor_integration.py
+- pytest -q tests/test_live_monitor_contract.py
+
+受け入れ条件:
+- monitor status 遷移が stream 状態と一致
+- 既存 marker/run_complete 契約を壊さない
+```
+
+## 2.37 PR-37: 監査ログ運用強化（ローテーション/保持期間）
+
+```text
+運用監査の継続運用に向け、監査JSONLのローテーションと保持期間管理を追加してください。
+
+対象:
+- src/bitcoin_bot/utils/logging.py
+- scripts/run_live.py
+- docs/operations.md
+- tests/test_audit_log_rotation.py（新規可）
+
+必須仕様:
+- `var/logs/audit_events.jsonl` のサイズ上限ローテーション
+- 保持世代数（例: N世代）を環境変数で制御
+- 秘密情報マスク契約を維持
+
+実行コマンド（必須）:
+- pytest -q tests/test_audit_log_rotation.py
+- pytest -q tests/test_audit_log_contract.py
+
+受け入れ条件:
+- ローテーションと保持制御テスト通過
+- 既存監査イベント契約を壊さない
+```
+
+## 2.38 PR-38: Replayテスト基盤（決定論）
+
+```text
+本番前の再現性担保として、最小の replay テスト基盤を追加してください。
+
+対象:
+- scripts/replay_check.sh（新規）
+- src/bitcoin_bot/pipeline/backtest_runner.py
+- tests/test_replay_determinism.py（新規可）
+
+必須仕様:
+- 同一入力で同一 summary（主要メトリクス）を再現
+- 乱数を使う場合は seed 固定
+- replay 失敗時に差分を出力
+
+実行コマンド（必須）:
+- bash scripts/replay_check.sh
+- pytest -q tests/test_replay_determinism.py
+
+受け入れ条件:
+- 連続2回実行で一致
+- 不一致時に検知できる
+```
+
+## 2.39 PR-39: リリースRunbook最終化（Go/No-Go）
+
+```text
+本番移行の最終判断に使える Runbook を最小追加してください。
+
+対象:
+- docs/operations.md
+- README.md
+
+必須仕様:
+- Go/No-Go 判定チェックリスト
+  - release_check 成功
+  - smoke 反復成功
+  - secrets 設定確認
+  - health/metrics 確認
+- ロールバック手順（最小）
+- 連絡/エスカレーション導線（プレースホルダ可）
+
+実行コマンド（必須）:
+- bash scripts/release_check.sh
+- SMOKE_REPEAT_COUNT=3 bash scripts/smoke_live_daemon.sh
+
+受け入れ条件:
+- Runbook 記載と現行実装が矛盾しない
+- ドキュメントだけで当日運用判断が可能
+```
+
 ---
 
 ## 3. PRレビュー時のチェックリスト
