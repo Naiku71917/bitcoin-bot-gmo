@@ -40,7 +40,13 @@ bash scripts/smoke_live_daemon.sh
 
 # 異常系シミュレーション（終了コード非0 + 診断出力）
 bash scripts/smoke_live_daemon.sh --simulate-failure
+
+# 反復実行（24h相当の事前確認向け）
+SMOKE_REPEAT_COUNT=3 bash scripts/smoke_live_daemon.sh
 ```
+
+- `SMOKE_REPEAT_COUNT` を指定すると、health/artifacts 検証を指定回数反復します。
+- 失敗時は即終了し、`failed_iteration=<失敗回>/<総回数>` を出力します。
 
 ## 一次切り分け（短縮版）
 
