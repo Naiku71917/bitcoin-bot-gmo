@@ -17,6 +17,16 @@ docker-compose ps
 curl -fsS http://127.0.0.1:9754/healthz
 ```
 
+## 実運用前スモーク検証
+
+```bash
+# 正常系（終了コード0）
+bash scripts/smoke_live_daemon.sh
+
+# 異常系シミュレーション（終了コード非0 + 診断出力）
+bash scripts/smoke_live_daemon.sh --simulate-failure
+```
+
 ## 一次切り分け（短縮版）
 
 - Logs:
@@ -27,3 +37,6 @@ curl -fsS http://127.0.0.1:9754/healthz
 - Health:
 	- `docker-compose ps` が `healthy` か
 	- `/healthz` が `200` を返すか
+
+補足:
+- `scripts/smoke_live_daemon.sh` は異常時に `docker-compose ps` / `docker-compose logs --tail=200 bot` / artifacts を自動出力する。
