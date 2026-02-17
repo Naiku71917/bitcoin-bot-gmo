@@ -683,6 +683,158 @@ run_live 常駐ループに再接続ポリシーを実装し、monitor status �
 - 異常系で終了コード非0 + 切り分け情報出力
 ```
 
+## 2.28 PR-28: execute_orders=true 時の実注文フロー接続
+
+```text
+本番移行に向け、execute_orders=true のときのみ最小注文フローを有効化してください。
+
+対象:
+- src/bitcoin_bot/pipeline/live_runner.py
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- tests/test_live_execute_orders_flow.py（新規可）
+
+必須仕様:
+- execute_orders=false では従来どおり未発注
+- execute_orders=true で最小注文処理（place_order 呼び出し）
+- 実行結果を summary に記録
+  - order_attempted
+  - order_status
+  - reason_codes
+
+実行コマンド（必須）:
+- pytest -q tests/test_live_execute_orders_flow.py
+- pytest -q
+
+受け入れ条件:
+- false/true の分岐テスト通過
+- run_complete/run_progress 契約を壊さない
+```
+
+## 2.29 PR-29: GMOストリーム最小実装（order/account）
+
+```text
+ライブ監視の実効性向上のため、GMO stream の最小実装を追加してください。
+
+対象:
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- src/bitcoin_bot/exchange/protocol.py（必要最小限）
+- tests/test_exchange_stream_runtime.py（新規可）
+
+必須仕様:
+- stream_order_events / stream_account_events に実装を追加
+- 接続エラーは NormalizedError で扱えるようにする
+- monitor status と接続状態の整合を保つ
+
+実行コマンド（必須）:
+- pytest -q tests/test_exchange_stream_runtime.py
+- pre-commit run --all-files
+
+受け入れ条件:
+- 正常/切断復旧モックテスト通過
+- 既存 exchange 契約テストを壊さない
+```
+
+## 2.30 PR-30: 監査イベント保存（注文/停止/設定）
+
+```text
+運用監査に必要なイベントを var/logs へ JSONL で保存してください。
+
+対象:
+- src/bitcoin_bot/utils/logging.py
+- src/bitcoin_bot/pipeline/live_runner.py
+- src/bitcoin_bot/telemetry/reporters.py
+- tests/test_audit_log_contract.py（新規可）
+
+必須仕様:
+- 最低限のイベント種類
+  - order_attempt
+  - order_result
+  - risk_stop
+  - startup_validation
+- 1行1JSON（JSONL）で追記
+- 秘密情報を記録しない
+
+実行コマンド（必須）:
+- pytest -q tests/test_audit_log_contract.py
+- pytest -q
+
+受け入れ条件:
+- 必須イベントの保存テスト通過
+- run_complete 契約を壊さない
+```
+
+## 2.31 PR-31: 本番用 compose の secrets 対応（最小）
+
+```text
+本番運用の安全性向上のため docker-compose に secrets 対応を追加してください。
+
+対象:
+- docker-compose.yml
+- README.md
+- docs/operations.md
+
+必須仕様:
+- APIキー/シークレットを `.env` 直書き依存から段階的に分離
+- secrets ファイル利用時の起動手順を明記
+- 既存起動手順との後方互換を維持
+
+実行コマンド（必須）:
+- docker-compose config
+- bash scripts/smoke_live_daemon.sh
+
+受け入れ条件:
+- compose 構文が有効
+- 既存スモークが通る
+```
+
+## 2.32 PR-32: 長時間運用スモークの反復実行
+
+```text
+24h相当の事前確認として、スモークスクリプトの反復実行モードを追加してください。
+
+対象:
+- scripts/smoke_live_daemon.sh
+- docs/operations.md
+
+必須仕様:
+- `SMOKE_REPEAT_COUNT`（回数）で反復実行
+- 各回で health/artifacts を検証
+- 失敗時は即終了し、回数と失敗回の情報を出力
+
+実行コマンド（必須）:
+- SMOKE_REPEAT_COUNT=3 bash scripts/smoke_live_daemon.sh
+
+受け入れ条件:
+- 連続成功時は終了コード0
+- 途中失敗時は終了コード非0 + 診断出力
+```
+
+## 2.33 PR-33: release 前CI相当フルチェック固定化
+
+```text
+本番リリース前に実行するフルチェックを1コマンド化してください。
+
+対象:
+- scripts/release_check.sh（新規）
+- README.md
+- docs/operations.md
+
+必須仕様:
+- 1コマンドで以下を実行
+  - pre-commit run --all-files
+  - pytest -q
+  - pytest -q --cov=src/bitcoin_bot --cov-report=term-missing --cov-report=xml --cov-report=html
+  - bash scripts/smoke_live_daemon.sh
+- 失敗時にどの段階で落ちたかを明確に出力
+
+実行コマンド（必須）:
+- bash scripts/release_check.sh
+
+受け入れ条件:
+- 成功時終了コード0
+- 失敗時終了コード非0 + 段階ログ出力
+```
+
 ---
 
 ## 3. PRレビュー時のチェックリスト
