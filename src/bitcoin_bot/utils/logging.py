@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any
 
 
+_audit_log_max_bytes = 5 * 1024 * 1024
+_audit_log_retention = 5
+
+
 def setup_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     if logger.handlers:
@@ -17,6 +21,12 @@ def setup_logger(name: str) -> logging.Logger:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     return logger
+
+
+def set_audit_log_policy(*, max_bytes: int, retention: int) -> None:
+    global _audit_log_max_bytes, _audit_log_retention
+    _audit_log_max_bytes = max(1, int(max_bytes))
+    _audit_log_retention = max(1, int(retention))
 
 
 _SECRET_KEYWORDS = {
@@ -44,11 +54,31 @@ def _sanitize_value(value: Any) -> Any:
     return value
 
 
+def _rotate_audit_log_if_needed(log_path: Path) -> None:
+    if not log_path.exists():
+        return
+    if log_path.stat().st_size <= _audit_log_max_bytes:
+        return
+
+    for index in range(_audit_log_retention, 0, -1):
+        rotated_path = log_path.with_name(f"{log_path.name}.{index}")
+        if rotated_path.exists():
+            if index >= _audit_log_retention:
+                rotated_path.unlink()
+            else:
+                next_path = log_path.with_name(f"{log_path.name}.{index + 1}")
+                rotated_path.replace(next_path)
+
+    first_rotated = log_path.with_name(f"{log_path.name}.1")
+    log_path.replace(first_rotated)
+
+
 def append_audit_event(
     *, logs_dir: str, event_type: str, payload: dict[str, Any]
 ) -> None:
     log_path = Path(logs_dir) / "audit_events.jsonl"
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    _rotate_audit_log_if_needed(log_path)
 
     event = {
         "timestamp": datetime.now(UTC).isoformat(),

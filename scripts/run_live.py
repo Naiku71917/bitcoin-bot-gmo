@@ -11,6 +11,7 @@ from bitcoin_bot.config.loader import load_runtime_config
 from bitcoin_bot.config.validator import validate_config, validate_runtime_environment
 from bitcoin_bot.main import run
 from bitcoin_bot.telemetry.reporters import emit_run_progress, monitor_status_to_value
+from bitcoin_bot.utils.logging import set_audit_log_policy
 
 
 @dataclass(slots=True)
@@ -170,6 +171,10 @@ def main() -> int:
     max_reconnect_retries = int(os.getenv("LIVE_MAX_RECONNECT_RETRIES", "3"))
     health_port = int(os.getenv("HEALTH_PORT", "9754"))
     artifacts_dir = os.getenv("ARTIFACTS_DIR", validated.paths.artifacts_dir)
+    audit_max_bytes = int(os.getenv("AUDIT_LOG_MAX_BYTES", str(5 * 1024 * 1024)))
+    audit_retention = int(os.getenv("AUDIT_LOG_RETENTION", "5"))
+
+    set_audit_log_policy(max_bytes=audit_max_bytes, retention=audit_retention)
 
     env_validation = validate_runtime_environment(validated)
     if env_validation["fatal_errors"]:

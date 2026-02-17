@@ -60,6 +60,18 @@ bash scripts/release_check.sh
 	- pytest（coverage）
 	- smoke_live_daemon
 
+## 監査ログローテーション
+
+- 監査ログは `var/logs/audit_events.jsonl` に出力され、サイズ上限超過時にローテーションされます。
+- 保持世代数は環境変数で制御できます。
+
+```bash
+# 例: 1MB上限 / 7世代保持
+export AUDIT_LOG_MAX_BYTES=1048576
+export AUDIT_LOG_RETENTION=7
+python scripts/run_live.py
+```
+
 ## 一次切り分け（短縮版）
 
 - Logs:
