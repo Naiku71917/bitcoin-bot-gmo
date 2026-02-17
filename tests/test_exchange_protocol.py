@@ -9,6 +9,7 @@ from bitcoin_bot.exchange.protocol import (
     ExchangeProtocol,
     NormalizedAccountEvent,
     NormalizedBalance,
+    NormalizedError,
     NormalizedOrder,
     NormalizedOrderEvent,
     NormalizedOrderState,
@@ -31,6 +32,7 @@ def test_gmo_adapter_spot_leverage_switching(
     adapter = GMOAdapter(product_type=product_type)  # type: ignore[arg-type]
 
     balances = adapter.fetch_balances(account_type="main")
+    assert not isinstance(balances, NormalizedError)
     assert balances
     assert isinstance(balances[0], NormalizedBalance)
     assert all(balance.product_type == product_type for balance in balances)
