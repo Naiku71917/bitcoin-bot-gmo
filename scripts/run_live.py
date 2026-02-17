@@ -105,15 +105,24 @@ def _run_daemon_loop(
     while not stop_event.is_set():
         metrics_state.run_loop_total += 1
         try:
-            execute_run(mode="live", config_path=config_path)
-            metrics_state.monitor_status = "active"
+            run_result = execute_run(mode="live", config_path=config_path)
+            resolved_monitor_status = (
+                run_result.get("pipeline_summary", {})
+                .get("monitor_summary", {})
+                .get("status", "active")
+                if isinstance(run_result, dict)
+                else "active"
+            )
+            if resolved_monitor_status not in {"active", "reconnecting", "degraded"}:
+                resolved_monitor_status = "active"
+            metrics_state.monitor_status = resolved_monitor_status
             if reconnect_count > 0:
                 emit_run_progress(
                     artifacts_dir=artifacts_dir,
                     mode="live",
                     status="running",
                     last_error=None,
-                    monitor_status="active",
+                    monitor_status=resolved_monitor_status,
                     reconnect_count=reconnect_count,
                 )
         except Exception as exc:

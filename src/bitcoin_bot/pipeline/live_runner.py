@@ -3,10 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 from typing import Protocol
+from typing import Any
 
 from bitcoin_bot.config.models import RuntimeConfig
 from bitcoin_bot.exchange.gmo_adapter import GMOAdapter
 from bitcoin_bot.exchange.protocol import (
+    NormalizedError,
     NormalizedOrder,
     NormalizedOrderState,
     ProductType,
@@ -19,6 +21,28 @@ from bitcoin_bot.utils.logging import append_audit_event
 
 class OrderPlacerProtocol(Protocol):
     def place_order(self, order_request: NormalizedOrder) -> NormalizedOrderState: ...
+
+
+def _probe_stream_monitor_status(adapter: Any) -> str:
+    reconnecting_detected = False
+
+    for method_name in ("stream_order_events", "stream_account_events"):
+        stream_method = getattr(adapter, method_name, None)
+        if not callable(stream_method):
+            continue
+        try:
+            stream_iter = iter(stream_method())
+            first_item = next(stream_iter, None)
+        except Exception:
+            return "degraded"
+
+        if isinstance(first_item, NormalizedError):
+            if first_item.retryable:
+                reconnecting_detected = True
+            else:
+                return "degraded"
+
+    return "reconnecting" if reconnecting_detected else "active"
 
 
 def _default_risk_snapshot() -> dict[str, float]:
@@ -82,16 +106,17 @@ def run_live(
         ),
         hooks=DecisionHooks(min_confidence=config.strategy.min_confidence),
     )
+    adapter = exchange_adapter or GMOAdapter(
+        product_type=cast(ProductType, config.exchange.product_type),
+        api_base_url=config.exchange.api_base_url,
+        use_http=False,
+    )
+    stream_monitor_status = _probe_stream_monitor_status(adapter)
     order_attempted = False
     order_status = "not_attempted"
     if not execute_orders_enabled:
         stop_reason_codes.append("execute_orders_disabled")
     elif guard_result["status"] == "success" and decision.action in {"buy", "sell"}:
-        adapter = exchange_adapter or GMOAdapter(
-            product_type=cast(ProductType, config.exchange.product_type),
-            api_base_url=config.exchange.api_base_url,
-            use_http=False,
-        )
         order_attempted = True
         append_audit_event(
             logs_dir=config.paths.logs_dir,
@@ -156,6 +181,15 @@ def run_live(
         )
 
     reason_codes = [*decision.reason_codes, *stop_reason_codes]
+    if stream_monitor_status == "reconnecting":
+        reason_codes.append("stream_reconnecting")
+    elif stream_monitor_status == "degraded":
+        reason_codes.append("stream_degraded")
+
+    resolved_monitor_status = (
+        "degraded" if guard_result["status"] != "success" else stream_monitor_status
+    )
+
     emit_run_progress(
         artifacts_dir=config.paths.artifacts_dir,
         mode="live",
@@ -165,7 +199,7 @@ def run_live(
             if stop_reason_codes
             else (reason_codes[0] if reason_codes else None)
         ),
-        monitor_status="active" if guard_result["status"] == "success" else "degraded",
+        monitor_status=resolved_monitor_status,
     )
 
     return {
@@ -183,9 +217,7 @@ def run_live(
             "stop_reason_codes": stop_reason_codes,
             "risk_guards": guard_result,
             "monitor_summary": {
-                "status": "active"
-                if guard_result["status"] == "success"
-                else "degraded",
+                "status": resolved_monitor_status,
                 "reconnect_count": 0,
             },
         },
