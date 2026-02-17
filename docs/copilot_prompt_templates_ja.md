@@ -236,6 +236,157 @@ Docker常駐の最小構成を実装してください。
 - healthcheck が healthy になる
 ```
 
+## 2.9 PR-09: Exchangeストリーム契約の拡張
+
+```text
+Exchange Protocol / GMO Adapter を、仕様書準拠の不足分まで拡張してください。
+
+対象:
+- src/bitcoin_bot/exchange/protocol.py
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- tests/test_exchange_protocol.py
+
+必須仕様:
+- protocol に以下を追加
+  - fetch_ticker
+  - stream_order_events
+  - stream_account_events
+- 既存の spot/leverage 切替と整合を保つ
+- 上位層へ返す戻り値の契約を明示（dict/dataclass のどちらかで統一）
+
+受け入れ条件:
+- 既存テストを壊さない
+- 追加メソッド分の契約テストが通る
+```
+
+## 2.10 PR-10: 指標生成（EMA/RSI/ATR + feature flags）
+
+```text
+指標生成モジュールを仕様準拠で実装してください。
+
+対象:
+- src/bitcoin_bot/indicators/generator.py
+- tests/test_indicator_contract.py（新規可）
+
+必須仕様:
+- EMA（短期/長期）, RSI, ATR を生成
+- 既存カラムを上書きしない
+- 設定で計算窓を切替可能
+- feature flags: slope_norm, gap_norm をON/OFF可能
+
+受け入れ条件:
+- 指標列の存在・命名規則テスト通過
+- flags OFF 時に追加列が出ないことを確認
+```
+
+## 2.11 PR-11: Strategy意思決定契約
+
+```text
+戦略コアの意思決定出力を契約先行で実装してください。
+
+対象:
+- src/bitcoin_bot/strategy/core.py
+- tests/test_strategy_contract.py（新規可）
+
+必須仕様:
+- 出力契約:
+  - action: buy|sell|hold
+  - confidence: 0.0..1.0
+  - reason_codes: list[str]
+  - risk: sl, tp, max_holding_bars
+- 判定は最小実装でよいが、EMA/RSI/ATR を入力として扱える構造にする
+- クールダウンや最小信頼度フィルタのフックを用意
+
+受け入れ条件:
+- 出力スキーマ検証テスト通過
+- 境界値（confidence 0/1, hold判定）テスト通過
+```
+
+## 2.12 PR-12: リスクガード（degraded/abort）
+
+```text
+リスク管理の最低限ガードを追加してください。
+
+対象:
+- src/bitcoin_bot/pipeline/live_runner.py
+- src/bitcoin_bot/optimizer/gates.py
+- tests/test_risk_guards.py（新規可）
+
+必須仕様:
+- 最大ドローダウン、日次損失上限、建玉サイズ上限の最低3ガード
+- 閾値超過時に degraded または abort を返す
+- 停止理由コードを run サマリへ受け渡せる形にする
+
+受け入れ条件:
+- 閾値超過ケースのテスト通過
+- 停止理由が欠落しないことを確認
+```
+
+## 2.13 PR-13: 最適化スコア/ゲート/サルベージ
+
+```text
+最適化出力契約を仕様どおりに実装してください。
+
+対象:
+- src/bitcoin_bot/optimizer/orchestrator.py
+- src/bitcoin_bot/optimizer/gates.py
+- src/bitcoin_bot/telemetry/reporters.py
+- tests/test_optimizer_contract.py（新規可）
+
+必須仕様:
+- run_complete の optimization に以下を必ず含める
+  - score
+  - gates.accept
+  - salvage
+- gate判定の理由コードを保持
+- opt_trials の実行値をサマリへ記録
+
+受け入れ条件:
+- optimization 契約テスト通過
+- run_complete の必須キーを壊さない
+```
+
+## 2.14 PR-14: 常駐進捗・監視出力（run_progress）
+
+```text
+常駐運用向けの進捗出力を追加してください。
+
+対象:
+- src/bitcoin_bot/pipeline/live_runner.py
+- src/bitcoin_bot/telemetry/reporters.py
+- scripts/run_live.py
+- tests/test_live_progress_contract.py（新規可）
+
+必須仕様:
+- var/artifacts/run_progress.json を定期更新
+- 原子的書き込みを使う（既存ioユーティリティを優先）
+- 少なくとも status, updated_at, mode, last_error を保持
+- 例外時も最終状態を degraded/failed で保存
+
+受け入れ条件:
+- run_progress.json が生成・更新される
+- 既存の run_complete 契約を壊さない
+```
+
+## 2.15 PR-15: CI一致の統合検証
+
+```text
+ここまでの変更をCI相当で検証し、必要最小限の修正のみ行ってください。
+
+対象:
+- README.md
+- tests/（不足テストの補完のみ）
+
+実行コマンド:
+- pre-commit run --all-files
+- pytest -q
+- pytest -q --cov=src/bitcoin_bot --cov-report=term-missing --cov-report=xml --cov-report=html
+
+受け入れ条件:
+- すべての品質ゲートを通過
+- 契約（run_complete/marker/Discord非致命）を維持
+```
+
 ---
 
 ## 3. PRレビュー時のチェックリスト
