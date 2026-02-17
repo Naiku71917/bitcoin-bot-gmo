@@ -26,6 +26,7 @@ def emit_run_progress(
     last_error: str | None,
     monitor_status: str | None = None,
     reconnect_count: int = 0,
+    validation: dict | None = None,
 ) -> dict:
     allowed_monitor_statuses = {"active", "reconnecting", "degraded"}
     resolved_monitor_status = monitor_status
@@ -39,7 +40,7 @@ def emit_run_progress(
     if resolved_monitor_status not in allowed_monitor_statuses:
         resolved_monitor_status = "degraded"
 
-    progress = {
+    progress: dict[str, object] = {
         "status": status,
         "updated_at": datetime.now(UTC).isoformat(),
         "mode": mode,
@@ -47,6 +48,8 @@ def emit_run_progress(
         "monitor_status": resolved_monitor_status,
         "reconnect_count": reconnect_count,
     }
+    if validation is not None:
+        progress["validation"] = validation
     output_path = f"{artifacts_dir}/run_progress.json"
     atomic_dump_json(output_path, progress)
     return progress

@@ -7,6 +7,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Thread
 from typing import Callable
 
+from bitcoin_bot.config.loader import load_runtime_config
+from bitcoin_bot.config.validator import validate_config, validate_runtime_environment
 from bitcoin_bot.main import run
 from bitcoin_bot.telemetry.reporters import emit_run_progress, monitor_status_to_value
 
@@ -153,11 +155,34 @@ def main() -> int:
     _install_signal_handlers(stop_event)
 
     config_path = os.getenv("CONFIG_PATH", "configs/runtime.live.spot.yaml")
+    validated = validate_config(load_runtime_config(config_path))
     interval_seconds = int(os.getenv("LIVE_LOOP_INTERVAL_SECONDS", "60"))
     reconnect_wait_seconds = int(os.getenv("LIVE_RECONNECT_WAIT_SECONDS", "5"))
     max_reconnect_retries = int(os.getenv("LIVE_MAX_RECONNECT_RETRIES", "3"))
     health_port = int(os.getenv("HEALTH_PORT", "9754"))
-    artifacts_dir = os.getenv("ARTIFACTS_DIR", "./var/artifacts")
+    artifacts_dir = os.getenv("ARTIFACTS_DIR", validated.paths.artifacts_dir)
+
+    env_validation = validate_runtime_environment(validated)
+    if env_validation["fatal_errors"]:
+        emit_run_progress(
+            artifacts_dir=artifacts_dir,
+            mode="live",
+            status="failed",
+            last_error=env_validation["fatal_errors"][0],
+            monitor_status="degraded",
+            validation=env_validation,
+        )
+        return 1
+
+    if env_validation["warnings"]:
+        emit_run_progress(
+            artifacts_dir=artifacts_dir,
+            mode="live",
+            status="running",
+            last_error=env_validation["warnings"][0],
+            monitor_status="active",
+            validation=env_validation,
+        )
 
     runtime_state = RuntimeMetricsState(stop_event=stop_event)
     health_server = _run_runtime_server(runtime_state, health_port)
@@ -184,6 +209,7 @@ def main() -> int:
             last_error=final_error,
             monitor_status="degraded",
             reconnect_count=reconnect_count,
+            validation=env_validation,
         )
         stop_event.set()
         health_server.shutdown()

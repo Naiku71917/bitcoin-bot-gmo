@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from typing import Mapping
 
 from bitcoin_bot.config.models import RuntimeConfig
 
@@ -28,3 +30,38 @@ def validate_config(config: RuntimeConfig) -> RuntimeConfig:
     Path(config.paths.logs_dir).mkdir(parents=True, exist_ok=True)
     Path(config.paths.cache_dir).mkdir(parents=True, exist_ok=True)
     return config
+
+
+def validate_runtime_environment(
+    config: RuntimeConfig,
+    environ: Mapping[str, str] | None = None,
+) -> dict:
+    env = environ if environ is not None else os.environ
+    fatal_errors: list[str] = []
+    warnings: list[str] = []
+
+    if config.runtime.mode == "live" and config.runtime.execute_orders:
+        required_envs = ["GMO_API_KEY", "GMO_API_SECRET"]
+        missing = [name for name in required_envs if not env.get(name)]
+        if missing:
+            fatal_errors.append("missing_required_env:" + ",".join(sorted(missing)))
+
+    discord_status = "disabled"
+    discord_reason: str | None = None
+    if config.notify.discord.enabled:
+        webhook_env = config.notify.discord.webhook_env
+        if env.get(webhook_env):
+            discord_status = "ready"
+        else:
+            discord_status = "failed"
+            discord_reason = "missing_webhook_url"
+            warnings.append("discord_webhook_missing")
+
+    return {
+        "fatal_errors": fatal_errors,
+        "warnings": warnings,
+        "discord": {
+            "status": discord_status,
+            "reason": discord_reason,
+        },
+    }

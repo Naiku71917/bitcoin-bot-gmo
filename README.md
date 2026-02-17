@@ -58,6 +58,14 @@ docker-compose ps
 curl -fsS http://127.0.0.1:9754/healthz
 ```
 
+## 起動前環境変数チェック（live）
+
+- `runtime.execute_orders=true` の場合は以下が必須です。
+	- `GMO_API_KEY`
+	- `GMO_API_SECRET`
+- 不足時は `scripts/run_live.py` が起動失敗し、`run_progress.json` に検証結果を残します。
+- Discord通知が有効で webhook 環境変数未設定の場合は非致命で継続し、検証結果に `status=failed` が記録されます。
+
 ## 障害時の一次確認
 
 ```bash
