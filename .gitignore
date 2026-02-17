@@ -16,6 +16,7 @@ venv/
 .ruff_cache/
 .coverage
 htmlcov/
+.vscode/
 
 # Runtime artifacts
 var/**
