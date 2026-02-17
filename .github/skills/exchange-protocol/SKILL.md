@@ -26,6 +26,10 @@
 5. HTTP連携 (`use_http=True`) 変更時は認証ヘッダー生成と失敗時 `NormalizedError` 返却を維持。
 6. `product_type` の分岐追加時は、spot/leverageの両ケースをテストに含める。
 
+## 非交渉契約
+- 上位層には `ExchangeProtocol` と `Normalized*` 型のみを公開する。
+- `normalize_error()` のカテゴリ体系（auth/rate_limit/validation/network/exchange）を維持する。
+
 ## 完了条件
 - `isinstance(adapter, ExchangeProtocol)` を満たす。
 - `pytest -q tests/test_exchange_protocol.py tests/test_exchange_error_normalization.py tests/test_exchange_runtime_integration.py` が通る。

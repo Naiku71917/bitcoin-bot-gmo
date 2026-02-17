@@ -29,6 +29,10 @@
 5. `optimization` の `score` / `gates.accept` / `gates.reasons` / `salvage` を維持。
 6. Discord失敗を非致命で保持（`status`, `reason`）し、例外で落とさない。
 
+## 非交渉契約
+- `var/artifacts/run_complete.json` は `atomic_dump_json` で更新する。
+- STDOUTマーカー `BEGIN_RUN_COMPLETE_JSON` / `END_RUN_COMPLETE_JSON` を維持する。
+
 ## 完了条件
 - `pytest -q tests/test_main_contract.py tests/test_optimizer_contract.py tests/test_backtest_metrics_contract.py tests/test_discord_non_fatal.py` が通る。
 - run後に `var/artifacts/run_complete.json` が生成される。

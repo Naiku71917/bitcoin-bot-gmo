@@ -1,3 +1,7 @@
+---
+applyTo: "**"
+---
+
 # Serena MCP Instructions（`bitcoin-bot-gmo`）
 
 このファイルは、Copilot Chat / AIエージェントが **全作業で Serena MCP を必須利用**するための実行ルールです。

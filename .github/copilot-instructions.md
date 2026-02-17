@@ -8,6 +8,7 @@
 ## エージェント向け参照順
 - まず `AGENTS.md` を読む（作業ルールとSkill選択の入口）。
 - **全作業で Serena MCP を必ず使い**、`.github/instructions/serena-instructions.md` を先に確認する。
+- Skillを新規作成/更新する場合は `.github/skills/SKILL_FORMAT.md` に従う。
 - 次に変更内容に応じた Skill を読む:
   - `.github/skills/run-complete-contract/SKILL.md`
   - `.github/skills/config-validation/SKILL.md`

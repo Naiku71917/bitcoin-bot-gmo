@@ -29,5 +29,9 @@
 4. env fatal 時は run loop 前に `run_progress.json` へ `failed` を出して終了する。
 5. 終了時は `shutdown_signal` / `runtime_exception` を区別して進捗へ反映する。
 
+## 非交渉契約
+- `run_progress.json` の `monitor_status/reconnect_count` 契約を維持する。
+- `/healthz` と `/metrics` の公開契約を維持する。
+
 ## 完了条件
 - `pytest -q tests/test_live_monitor_contract.py tests/test_live_reconnect_policy.py tests/test_live_progress_contract.py tests/test_metrics_contract.py tests/test_runtime_env_validation.py` が通る。

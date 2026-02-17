@@ -26,5 +26,9 @@
 4. 既存列上書き禁止（衝突時 ValueError）を維持。
 5. paper runner の `summary.order_count` と `paper_order_events` の整合を維持。
 
+## 非交渉契約
+- `StrategyDecision` の出力キー（action/confidence/reason_codes/risk）を維持する。
+- 指標列の既存命名規約と衝突時エラー挙動を維持する。
+
 ## 完了条件
 - `pytest -q tests/test_strategy_contract.py tests/test_indicator_contract.py tests/test_paper_runner_contract.py` が通る。

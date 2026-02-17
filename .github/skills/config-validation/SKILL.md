@@ -29,6 +29,10 @@
 5. `paths.*` 系を追加した場合は `mkdir(parents=True, exist_ok=True)` 経路を維持。
 6. `tests/test_config_validation.py` と周辺テストに成功/失敗ケースを追加。
 
+## 非交渉契約
+- `runtime.mode` / `exchange.product_type` の fail-fast を維持する。
+- `optimizer.opt_trials` の `1..500` クランプを維持する。
+
 ## 完了条件
 - `runtime.mode` と `exchange.product_type` の許容値制約を壊していない。
 - `runtime.execute_orders` が bool として検証される。

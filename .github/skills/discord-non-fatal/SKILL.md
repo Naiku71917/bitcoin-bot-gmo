@@ -24,6 +24,10 @@ Discord通知処理を変更しても、通知失敗がパイプライン失敗�
 4. `validate_runtime_environment()` の warning（`discord_webhook_missing`）との整合を維持。
 5. 新しい失敗パターン追加時は失敗テストを先に追加。
 
+## 非交渉契約
+- Discord送信失敗でプロセスを落とさない（非致命）挙動を維持する。
+- `notifications.discord.status/reason` を run_complete 側に保持する。
+
 ## 完了条件
 - 通知失敗時も run 全体が継続する。
 - `pytest -q tests/test_discord_non_fatal.py tests/test_main_contract.py tests/test_runtime_env_validation.py` が通る。

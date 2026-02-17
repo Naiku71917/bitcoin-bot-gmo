@@ -32,6 +32,10 @@
 5. 新modeを追加する場合は parser の choices / validator / tests を同時更新。
 6. 最終的に `emit_run_complete()` 経由で同じ run完了契約に到達させる。
 
+## 非交渉契約
+- `main.run` の分岐フロー（load -> validate -> runner -> emit_run_complete）を壊さない。
+- liveでは `run_progress.json` と `heartbeat.txt` の更新契約を維持する。
+
 ## 完了条件
 - `pytest -q tests/test_main_contract.py tests/test_paper_runner_contract.py tests/test_live_progress_contract.py tests/test_live_monitor_contract.py` が通る。
 - live実行で heartbeat が更新される。

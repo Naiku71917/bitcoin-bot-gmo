@@ -26,5 +26,9 @@
 3. risk guard の reason code（例: `max_drawdown_exceeded`）を後方互換で扱う。
 4. live runner の `stop_reason_codes` と `risk_guards` summary の整合を維持。
 
+## 非交渉契約
+- optimization payload の `score/gates/salvage` 構造を維持する。
+- risk guard の状態遷移（success/degraded/abort）と reason code を維持する。
+
 ## 完了条件
 - `pytest -q tests/test_optimizer_contract.py tests/test_backtest_metrics_contract.py tests/test_risk_guards.py` が通る。

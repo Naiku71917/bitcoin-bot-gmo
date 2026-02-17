@@ -6,7 +6,8 @@
 1. `.github/copilot-instructions.md`
 2. `.github/instructions/serena-instructions.md`
 3. この `AGENTS.md`
-4. 目的に合う Skill（`.github/skills/*/SKILL.md`）
+4. Skill作成/更新時は `.github/skills/SKILL_FORMAT.md`
+5. 目的に合う Skill（`.github/skills/*/SKILL.md`）
 
 ## Serena MCP の基本方針
 - **全作業で Serena MCP を必ず利用**し、対象コード理解を Serena 経由で行う。

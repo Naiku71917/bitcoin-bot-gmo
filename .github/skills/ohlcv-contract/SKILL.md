@@ -21,6 +21,10 @@ OHLCV入力データの最小契約（列/時刻型）を壊さずに、デー�
 3. 追加検証を入れる場合は、既存の True ケースと失敗ケースを両方テスト化。
 4. 仕様変更時は `docs/api_contracts.md` または `docs/spec.md` の整合も確認。
 
+## 非交渉契約
+- 必須列 `timestamp, open, high, low, close, volume` を維持する。
+- `timestamp` の型契約（`datetime`）を維持する。
+
 ## 完了条件
 - 既存のOHLCV契約テストが通る。
 - `pytest -q tests/test_ohlcv_contract.py` が通る。
