@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bitcoin-bot-gmo"
+version = "0.1.0"
+description = "GMO coin compatible bitcoin bot skeleton"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "PyYAML>=6.0.1,<7.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0,<9.0.0",
+  "coverage>=7.6.0,<8.0.0",
+  "ruff>=0.9.0,<1.0.0",
+  "mypy>=1.15.0,<2.0.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/bitcoin_bot"]
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 70
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+]
+
+[tool.coverage.xml]
+output = "var/artifacts/coverage/coverage.xml"
+
+[tool.coverage.html]
+directory = "var/artifacts/coverage/html"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bitcoin_bot"]

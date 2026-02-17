@@ -1,0 +1,25 @@
+runtime:
+  mode: live
+  profile: live
+  interval_seconds: 300
+
+exchange:
+  name: gmo
+  product_type: spot
+  symbol: BTC_JPY
+  api_base_url: "https://api.coin.z.com"
+  ws_url: "wss://api.coin.z.com/ws"
+
+optimizer:
+  enabled: true
+  opt_trials: 50
+
+notify:
+  discord:
+    enabled: true
+    webhook_env: DISCORD_WEBHOOK_URL
+
+paths:
+  artifacts_dir: "./var/artifacts"
+  logs_dir: "./var/logs"
+  cache_dir: "./var/cache"

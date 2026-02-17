@@ -1,0 +1,23 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "bitcoin_bot.main", "--config", "configs/runtime.live.spot.yaml", "--mode", "live"]
+    env_file:
+      - .env
+    volumes:
+      - ./var:/app/var
+      - ./configs:/app/configs:ro
+    restart: unless-stopped
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; import time; p=Path('/app/var/artifacts/heartbeat.txt'); raise SystemExit(0 if p.exists() and (time.time()-p.stat().st_mtime)<900 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
