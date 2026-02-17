@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
+from typing import Protocol
 
 from bitcoin_bot.config.models import RuntimeConfig
+from bitcoin_bot.exchange.gmo_adapter import GMOAdapter
+from bitcoin_bot.exchange.protocol import (
+    NormalizedOrder,
+    NormalizedOrderState,
+    ProductType,
+)
 from bitcoin_bot.optimizer.gates import evaluate_risk_guards
 from bitcoin_bot.telemetry.reporters import emit_run_progress
+
+
+class OrderPlacerProtocol(Protocol):
+    def place_order(self, order_request: NormalizedOrder) -> NormalizedOrderState: ...
 
 
 def _default_risk_snapshot() -> dict[str, float]:
@@ -19,7 +31,9 @@ def _default_risk_snapshot() -> dict[str, float]:
 
 
 def run_live(
-    config: RuntimeConfig, risk_snapshot: dict[str, float] | None = None
+    config: RuntimeConfig,
+    risk_snapshot: dict[str, float] | None = None,
+    exchange_adapter: OrderPlacerProtocol | None = None,
 ) -> dict:
     execute_orders_enabled = config.runtime.execute_orders
     emit_run_progress(
@@ -51,13 +65,43 @@ def run_live(
         current_wallet_drift=snapshot["current_wallet_drift"],
     )
     stop_reason_codes = list(guard_result["reason_codes"])
+    order_attempted = False
+    order_status = "not_attempted"
     if not execute_orders_enabled:
         stop_reason_codes.append("execute_orders_disabled")
+    elif guard_result["status"] == "success":
+        adapter = exchange_adapter or GMOAdapter(
+            product_type=cast(ProductType, config.exchange.product_type),
+            api_base_url=config.exchange.api_base_url,
+            use_http=False,
+        )
+        order_attempted = True
+        order_result = adapter.place_order(
+            NormalizedOrder(
+                exchange=config.exchange.name,
+                product_type=cast(ProductType, config.exchange.product_type),
+                symbol=config.exchange.symbol,
+                side="buy",
+                order_type="market",
+                time_in_force="GTC",
+                qty=0.01,
+                price=None,
+                reduce_only=False
+                if config.exchange.product_type == "leverage"
+                else None,
+                client_order_id="live-min-order",
+            )
+        )
+        order_status = order_result.status
+    else:
+        order_status = "skipped_due_to_risk"
+
+    reason_codes = list(stop_reason_codes)
     emit_run_progress(
         artifacts_dir=config.paths.artifacts_dir,
         mode="live",
         status=guard_result["status"],
-        last_error=stop_reason_codes[0] if stop_reason_codes else None,
+        last_error=reason_codes[0] if reason_codes else None,
         monitor_status="active" if guard_result["status"] == "success" else "degraded",
     )
 
@@ -68,6 +112,9 @@ def run_live(
             "symbol": config.exchange.symbol,
             "product_type": config.exchange.product_type,
             "execute_orders": execute_orders_enabled,
+            "order_attempted": order_attempted,
+            "order_status": order_status,
+            "reason_codes": reason_codes,
             "stop_reason_codes": stop_reason_codes,
             "risk_guards": guard_result,
             "monitor_summary": {

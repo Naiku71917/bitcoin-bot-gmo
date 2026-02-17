@@ -257,7 +257,11 @@ class GMOAdapter(ExchangeProtocol):
             price=order_request.price,
             product_type=self.product_type,
             reduce_only=reduce_only,
-            raw={"exchange": "gmo"},
+            raw={
+                "exchange": "gmo",
+                "product_type": self.product_type,
+                "client_order_id": order_request.client_order_id,
+            },
         )
 
     def cancel_order(self, order_id: str) -> NormalizedOrderState:
