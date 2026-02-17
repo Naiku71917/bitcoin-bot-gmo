@@ -4,6 +4,7 @@ import os
 import signal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Thread
+from typing import Callable
 
 from bitcoin_bot.main import run
 from bitcoin_bot.telemetry.reporters import emit_run_progress
@@ -46,32 +47,43 @@ def _install_signal_handlers(stop_event: Event) -> None:
     signal.signal(signal.SIGINT, _handle_signal)
 
 
-def main() -> int:
-    stop_event = Event()
-    _install_signal_handlers(stop_event)
-
-    config_path = os.getenv("CONFIG_PATH", "configs/runtime.live.spot.yaml")
-    interval_seconds = int(os.getenv("LIVE_LOOP_INTERVAL_SECONDS", "60"))
-    health_port = int(os.getenv("HEALTH_PORT", "9754"))
-    artifacts_dir = os.getenv("ARTIFACTS_DIR", "./var/artifacts")
-
-    health_server = _run_health_server(stop_event, health_port)
+def _run_daemon_loop(
+    *,
+    stop_event: Event,
+    config_path: str,
+    artifacts_dir: str,
+    interval_seconds: int,
+    max_reconnect_retries: int,
+    reconnect_wait_seconds: int,
+    run_func: Callable[..., dict] | None = None,
+) -> tuple[int, int]:
+    execute_run = run_func or run
     exit_code = 0
     reconnect_count = 0
-    try:
-        while not stop_event.is_set():
-            try:
-                run(mode="live", config_path=config_path)
-            except Exception as exc:
-                reconnect_count += 1
+
+    while not stop_event.is_set():
+        try:
+            execute_run(mode="live", config_path=config_path)
+            if reconnect_count > 0:
                 emit_run_progress(
                     artifacts_dir=artifacts_dir,
                     mode="live",
-                    status="degraded",
-                    last_error="reconnecting_after_error",
-                    monitor_status="reconnecting",
+                    status="running",
+                    last_error=None,
+                    monitor_status="active",
                     reconnect_count=reconnect_count,
                 )
+        except Exception as exc:
+            reconnect_count += 1
+            emit_run_progress(
+                artifacts_dir=artifacts_dir,
+                mode="live",
+                status="degraded",
+                last_error="reconnecting_after_error",
+                monitor_status="reconnecting",
+                reconnect_count=reconnect_count,
+            )
+            if reconnect_count > max_reconnect_retries:
                 emit_run_progress(
                     artifacts_dir=artifacts_dir,
                     mode="live",
@@ -83,7 +95,36 @@ def main() -> int:
                 exit_code = 1
                 stop_event.set()
                 break
-            stop_event.wait(interval_seconds)
+
+            stop_event.wait(reconnect_wait_seconds)
+            continue
+
+        stop_event.wait(interval_seconds)
+
+    return exit_code, reconnect_count
+
+
+def main() -> int:
+    stop_event = Event()
+    _install_signal_handlers(stop_event)
+
+    config_path = os.getenv("CONFIG_PATH", "configs/runtime.live.spot.yaml")
+    interval_seconds = int(os.getenv("LIVE_LOOP_INTERVAL_SECONDS", "60"))
+    reconnect_wait_seconds = int(os.getenv("LIVE_RECONNECT_WAIT_SECONDS", "5"))
+    max_reconnect_retries = int(os.getenv("LIVE_MAX_RECONNECT_RETRIES", "3"))
+    health_port = int(os.getenv("HEALTH_PORT", "9754"))
+    artifacts_dir = os.getenv("ARTIFACTS_DIR", "./var/artifacts")
+
+    health_server = _run_health_server(stop_event, health_port)
+    try:
+        exit_code, reconnect_count = _run_daemon_loop(
+            stop_event=stop_event,
+            config_path=config_path,
+            artifacts_dir=artifacts_dir,
+            interval_seconds=interval_seconds,
+            max_reconnect_retries=max_reconnect_retries,
+            reconnect_wait_seconds=reconnect_wait_seconds,
+        )
     finally:
         final_status = "failed" if exit_code != 0 else "degraded"
         final_error = "runtime_exception" if exit_code != 0 else "shutdown_signal"

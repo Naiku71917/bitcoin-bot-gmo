@@ -18,6 +18,7 @@ def emit_run_progress(
     monitor_status: str | None = None,
     reconnect_count: int = 0,
 ) -> dict:
+    allowed_monitor_statuses = {"active", "reconnecting", "degraded"}
     resolved_monitor_status = monitor_status
     if resolved_monitor_status is None:
         if status in {"running", "success"}:
@@ -26,6 +27,8 @@ def emit_run_progress(
             resolved_monitor_status = "degraded"
         else:
             resolved_monitor_status = "reconnecting"
+    if resolved_monitor_status not in allowed_monitor_statuses:
+        resolved_monitor_status = "degraded"
 
     progress = {
         "status": status,
