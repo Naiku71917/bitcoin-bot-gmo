@@ -23,7 +23,7 @@ repos:
     hooks:
       - id: pytest-coverage
         name: pytest-coverage
-        entry: pytest -q --cov=src/bitcoin_bot --cov-report=term-missing --cov-report=xml --cov-report=html
+        entry: pytest -q --cov=src/bitcoin_bot --cov-report=term-missing
         language: system
         pass_filenames: false
         always_run: true
