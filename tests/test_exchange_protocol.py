@@ -7,9 +7,12 @@ import pytest
 from bitcoin_bot.exchange.gmo_adapter import GMOAdapter
 from bitcoin_bot.exchange.protocol import (
     ExchangeProtocol,
+    NormalizedAccountEvent,
     NormalizedBalance,
     NormalizedOrder,
+    NormalizedOrderEvent,
     NormalizedOrderState,
+    NormalizedTicker,
 )
 
 
@@ -60,11 +63,18 @@ def test_gmo_adapter_mandatory_methods_return_normalized_models():
         end=datetime.now(UTC),
         limit=10,
     )
+    ticker = adapter.fetch_ticker(symbol="BTC_JPY")
     positions = adapter.fetch_positions(symbol="BTC_JPY")
     cancelled = adapter.cancel_order(order_id="oid-1")
     fetched = adapter.fetch_order(order_id="oid-1")
+    order_events = list(adapter.stream_order_events())
+    account_events = list(adapter.stream_account_events())
 
     assert isinstance(klines, list)
+    assert isinstance(ticker, NormalizedTicker)
+    assert ticker.product_type == "leverage"
     assert isinstance(positions, list)
     assert isinstance(cancelled, NormalizedOrderState)
     assert isinstance(fetched, NormalizedOrderState)
+    assert all(isinstance(event, NormalizedOrderEvent) for event in order_events)
+    assert all(isinstance(event, NormalizedAccountEvent) for event in account_events)

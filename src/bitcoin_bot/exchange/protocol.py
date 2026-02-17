@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Iterator, Literal, Protocol, runtime_checkable
 
 
 ProductType = Literal["spot", "leverage"]
@@ -84,6 +84,37 @@ class NormalizedOrderState:
     raw: dict[str, Any]
 
 
+@dataclass(slots=True)
+class NormalizedTicker:
+    symbol: str
+    bid: float | None
+    ask: float | None
+    last: float | None
+    timestamp: datetime | None
+    product_type: ProductType
+
+
+@dataclass(slots=True)
+class NormalizedOrderEvent:
+    order_id: str
+    status: str
+    symbol: str | None
+    side: str | None
+    qty: float | None
+    product_type: ProductType
+    timestamp: datetime | None
+
+
+@dataclass(slots=True)
+class NormalizedAccountEvent:
+    event_type: str
+    asset: str | None
+    balance: float | None
+    available: float | None
+    product_type: ProductType
+    timestamp: datetime | None
+
+
 @runtime_checkable
 class ExchangeProtocol(Protocol):
     def fetch_klines(
@@ -95,7 +126,7 @@ class ExchangeProtocol(Protocol):
         limit: int,
     ) -> list[NormalizedKline]: ...
 
-    def fetch_ticker(self, symbol: str) -> dict[str, Any]: ...
+    def fetch_ticker(self, symbol: str) -> NormalizedTicker: ...
 
     def fetch_balances(self, account_type: str) -> list[NormalizedBalance]: ...
 
@@ -107,6 +138,6 @@ class ExchangeProtocol(Protocol):
 
     def fetch_order(self, order_id: str) -> NormalizedOrderState: ...
 
-    def stream_order_events(self) -> Any: ...
+    def stream_order_events(self) -> Iterator[NormalizedOrderEvent]: ...
 
-    def stream_account_events(self) -> Any: ...
+    def stream_account_events(self) -> Iterator[NormalizedAccountEvent]: ...

@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Iterator
 
 from bitcoin_bot.exchange.protocol import (
+    NormalizedAccountEvent,
     ExchangeProtocol,
     NormalizedBalance,
     NormalizedKline,
     NormalizedOrder,
+    NormalizedOrderEvent,
     NormalizedOrderState,
     NormalizedPosition,
+    NormalizedTicker,
     ProductType,
 )
 
@@ -37,8 +40,15 @@ class GMOAdapter(ExchangeProtocol):
     ) -> list[NormalizedKline]:
         return []
 
-    def fetch_ticker(self, symbol: str) -> dict[str, Any]:
-        return {"symbol": symbol}
+    def fetch_ticker(self, symbol: str) -> NormalizedTicker:
+        return NormalizedTicker(
+            symbol=symbol,
+            bid=None,
+            ask=None,
+            last=None,
+            timestamp=None,
+            product_type=self.product_type,
+        )
 
     def fetch_balances(self, account_type: str) -> list[NormalizedBalance]:
         return [
@@ -97,8 +107,8 @@ class GMOAdapter(ExchangeProtocol):
             raw={"exchange": "gmo"},
         )
 
-    def stream_order_events(self) -> Any:
+    def stream_order_events(self) -> Iterator[NormalizedOrderEvent]:
         return iter(())
 
-    def stream_account_events(self) -> Any:
+    def stream_account_events(self) -> Iterator[NormalizedAccountEvent]:
         return iter(())
