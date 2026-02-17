@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from time import time
-from typing import Iterator
+from typing import Callable, Iterator, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -27,12 +27,27 @@ from bitcoin_bot.exchange.protocol import (
 )
 
 
+TStreamEvent = TypeVar("TStreamEvent")
+
+
 @dataclass(slots=True)
 class GMOAdapter(ExchangeProtocol):
     product_type: ProductType
     api_base_url: str = "https://api.coin.z.com"
     use_http: bool = False
     timeout_seconds: float = 5.0
+    order_stream_source_factory: Callable[[], Iterator[dict]] | None = None
+    account_stream_source_factory: Callable[[], Iterator[dict]] | None = None
+
+    def _to_float(self, value: object) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError:
+                return None
+        return None
 
     def __post_init__(self) -> None:
         if self.product_type not in {"spot", "leverage"}:
@@ -101,6 +116,68 @@ class GMOAdapter(ExchangeProtocol):
             return self._normalize_http_error(exc.code, str(exc))
         except (URLError, TimeoutError) as exc:
             return self.normalize_error(source_code="NETWORK_TIMEOUT", message=str(exc))
+
+    def _to_datetime(self, value: object) -> datetime | None:
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                return None
+        return None
+
+    def _iter_with_reconnect(
+        self,
+        *,
+        factory: Callable[[], Iterator[dict]] | None,
+        parser: Callable[[dict], TStreamEvent],
+    ) -> Iterator[TStreamEvent | NormalizedError]:
+        if factory is None:
+            return
+
+        reconnect_attempts = 0
+        while True:
+            source = factory()
+            try:
+                for payload in source:
+                    yield parser(payload)
+                return
+            except (URLError, ConnectionError, TimeoutError) as exc:
+                yield self.normalize_error(
+                    source_code="NETWORK_TIMEOUT",
+                    message=str(exc),
+                )
+                reconnect_attempts += 1
+                if reconnect_attempts > 1:
+                    return
+            except Exception as exc:  # pragma: no cover - defensive fallback
+                yield self.normalize_error(
+                    source_code="EXCHANGE_ERROR",
+                    message=str(exc),
+                )
+                return
+
+    def _parse_order_event(self, payload: dict) -> NormalizedOrderEvent:
+        return NormalizedOrderEvent(
+            order_id=str(payload.get("order_id", "")),
+            status=str(payload.get("status", "active")),
+            symbol=payload.get("symbol") if payload.get("symbol") is not None else None,
+            side=payload.get("side") if payload.get("side") is not None else None,
+            qty=self._to_float(payload.get("qty")),
+            product_type=self.product_type,
+            timestamp=self._to_datetime(payload.get("timestamp")),
+        )
+
+    def _parse_account_event(self, payload: dict) -> NormalizedAccountEvent:
+        return NormalizedAccountEvent(
+            event_type=str(payload.get("event_type", "balance_update")),
+            asset=payload.get("asset") if payload.get("asset") is not None else None,
+            balance=self._to_float(payload.get("balance")),
+            available=self._to_float(payload.get("available")),
+            product_type=self.product_type,
+            timestamp=self._to_datetime(payload.get("timestamp")),
+        )
 
     def normalize_error(
         self,
@@ -292,8 +369,16 @@ class GMOAdapter(ExchangeProtocol):
             raw={"exchange": "gmo"},
         )
 
-    def stream_order_events(self) -> Iterator[NormalizedOrderEvent]:
-        return iter(())
+    def stream_order_events(self) -> Iterator[NormalizedOrderEvent | NormalizedError]:
+        return self._iter_with_reconnect(
+            factory=self.order_stream_source_factory,
+            parser=self._parse_order_event,
+        )
 
-    def stream_account_events(self) -> Iterator[NormalizedAccountEvent]:
-        return iter(())
+    def stream_account_events(
+        self,
+    ) -> Iterator[NormalizedAccountEvent | NormalizedError]:
+        return self._iter_with_reconnect(
+            factory=self.account_stream_source_factory,
+            parser=self._parse_account_event,
+        )
