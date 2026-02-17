@@ -8,6 +8,7 @@ from bitcoin_bot.exchange.protocol import (
     NormalizedAccountEvent,
     ExchangeProtocol,
     NormalizedBalance,
+    NormalizedError,
     NormalizedKline,
     NormalizedOrder,
     NormalizedOrderEvent,
@@ -29,6 +30,61 @@ class GMOAdapter(ExchangeProtocol):
     @property
     def _is_leverage(self) -> bool:
         return self.product_type == "leverage"
+
+    def normalize_error(
+        self,
+        *,
+        source_code: str | None,
+        message: str,
+    ) -> NormalizedError:
+        normalized_code = (source_code or "").upper()
+
+        if normalized_code in {"AUTH_FAILED", "INVALID_API_KEY", "UNAUTHORIZED"}:
+            return NormalizedError(
+                category="auth",
+                retryable=False,
+                source_code=source_code,
+                message=message,
+            )
+
+        if normalized_code in {"RATE_LIMIT", "TOO_MANY_REQUESTS", "THROTTLED"}:
+            return NormalizedError(
+                category="rate_limit",
+                retryable=True,
+                source_code=source_code,
+                message=message,
+            )
+
+        if normalized_code in {
+            "INVALID_PARAM",
+            "BAD_REQUEST",
+            "INSUFFICIENT_MARGIN",
+        }:
+            return NormalizedError(
+                category="validation",
+                retryable=False,
+                source_code=source_code,
+                message=message,
+            )
+
+        if normalized_code in {
+            "NETWORK_TIMEOUT",
+            "CONNECTION_ERROR",
+            "DNS_ERROR",
+        }:
+            return NormalizedError(
+                category="network",
+                retryable=True,
+                source_code=source_code,
+                message=message,
+            )
+
+        return NormalizedError(
+            category="exchange",
+            retryable=True,
+            source_code=source_code,
+            message=message,
+        )
 
     def fetch_klines(
         self,

@@ -34,7 +34,7 @@ class NormalizedFill:
 
 @dataclass(slots=True)
 class NormalizedError:
-    category: str
+    category: Literal["auth", "rate_limit", "validation", "network", "exchange"]
     retryable: bool
     source_code: str | None
     message: str
@@ -117,6 +117,13 @@ class NormalizedAccountEvent:
 
 @runtime_checkable
 class ExchangeProtocol(Protocol):
+    def normalize_error(
+        self,
+        *,
+        source_code: str | None,
+        message: str,
+    ) -> NormalizedError: ...
+
     def fetch_klines(
         self,
         symbol: str,
