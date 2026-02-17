@@ -3,6 +3,9 @@
 ## 目的
 OHLCV入力データの最小契約（列/時刻型）を壊さずに、データ処理を拡張する。
 
+## 前提（必須）
+- このSkill適用時は Serena MCP で `data/ohlcv.py` と `tests/test_ohlcv_contract.py` を先に確認する。
+
 ## 使うタイミング
 - `data/ohlcv.py` の検証ロジックを変更する時
 - 必須列や時刻の扱いを拡張する時
