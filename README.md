@@ -8,6 +8,7 @@ GMOコイン対応のビットコイン売買システム向け、Python 3.12ベ
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
+pre-commit install
 ```
 
 ## 実行
@@ -21,4 +22,10 @@ python -m bitcoin_bot.main --config configs/runtime.live.spot.yaml --mode live
 
 ```bash
 pytest -q
+```
+
+## pre-commit
+
+```bash
+pre-commit run --all-files
 ```

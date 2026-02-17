@@ -34,6 +34,8 @@ paths:
     assert "END_RUN_COMPLETE_JSON" in out
     assert result["pipeline"]["mode"] == "backtest"
 
-    artifact = json.loads(open("var/artifacts/run_complete.json", encoding="utf-8").read())
+    artifact = json.loads(
+        open("var/artifacts/run_complete.json", encoding="utf-8").read()
+    )
     assert "run_id" in artifact
     assert "pipeline" in artifact

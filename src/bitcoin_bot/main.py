@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 from datetime import UTC, datetime
+from typing import cast
 
 from bitcoin_bot.config.loader import load_runtime_config
+from bitcoin_bot.config.models import Mode
 from bitcoin_bot.config.validator import validate_config
 from bitcoin_bot.pipeline.backtest_runner import run_backtest
 from bitcoin_bot.pipeline.live_runner import run_live
@@ -11,7 +13,7 @@ from bitcoin_bot.pipeline.paper_runner import run_paper
 from bitcoin_bot.telemetry.reporters import emit_run_complete
 
 
-def run(mode: str, config_path: str) -> dict:
+def run(mode: Mode, config_path: str) -> dict:
     started_at = datetime.now(UTC)
     runtime_config = load_runtime_config(config_path)
     runtime_config.runtime.mode = mode
@@ -47,7 +49,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
-    run(mode=args.mode, config_path=args.config)
+    run(mode=cast(Mode, args.mode), config_path=args.config)
 
 
 if __name__ == "__main__":

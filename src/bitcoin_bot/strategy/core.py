@@ -11,4 +11,6 @@ class StrategyDecision:
 
 
 def hold_decision() -> StrategyDecision:
-    return StrategyDecision(action="hold", confidence=0.0, reason_codes=["not_implemented"])
+    return StrategyDecision(
+        action="hold", confidence=0.0, reason_codes=["not_implemented"]
+    )

@@ -13,7 +13,9 @@ def validate_config(config: RuntimeConfig) -> RuntimeConfig:
         raise ValueError(f"Invalid runtime.mode: {config.runtime.mode}")
 
     if config.exchange.product_type not in ALLOWED_PRODUCT_TYPES:
-        raise ValueError(f"Invalid exchange.product_type: {config.exchange.product_type}")
+        raise ValueError(
+            f"Invalid exchange.product_type: {config.exchange.product_type}"
+        )
 
     config.optimizer.opt_trials = max(1, min(500, config.optimizer.opt_trials))
 
