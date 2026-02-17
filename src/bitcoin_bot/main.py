@@ -36,6 +36,8 @@ def run(mode: Mode, config_path: str) -> dict:
         pipeline_result=pipeline,
         artifacts_dir=validated.paths.artifacts_dir,
         discord_enabled=validated.notify.discord.enabled,
+        optimizer_enabled=validated.optimizer.enabled,
+        opt_trials_executed=validated.optimizer.opt_trials,
     )
 
 

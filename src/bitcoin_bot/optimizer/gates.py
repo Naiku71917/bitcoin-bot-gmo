@@ -45,3 +45,13 @@ def evaluate_risk_guards(
 
 def default_gate_result() -> dict:
     return {"accept": None, "reasons": []}
+
+
+def evaluate_optimization_gates(score: float | None) -> dict:
+    if score is None:
+        return {"accept": False, "reasons": ["score_missing"]}
+
+    if score >= 0.0:
+        return {"accept": True, "reasons": []}
+
+    return {"accept": False, "reasons": ["score_below_threshold"]}

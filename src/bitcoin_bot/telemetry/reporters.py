@@ -17,13 +17,24 @@ def emit_run_complete(
     pipeline_result: dict,
     artifacts_dir: str,
     discord_enabled: bool,
+    optimizer_enabled: bool,
+    opt_trials_executed: int,
 ) -> dict:
     discord_result_raw = send_discord_webhook(enabled=discord_enabled)
     discord_result = {
         "status": discord_result_raw.get("status", "failed"),
         "reason": discord_result_raw.get("reason"),
     }
-    optimization = build_optimization_snapshot(enabled=True, opt_trials=50)
+    optimization_score = pipeline_result.get("optimization_score")
+    optimization_salvage = pipeline_result.get("optimization_salvage")
+    optimization = build_optimization_snapshot(
+        enabled=optimizer_enabled,
+        opt_trials=opt_trials_executed,
+        score=optimization_score,
+        salvage=optimization_salvage,
+    )
+    pipeline_summary = dict(pipeline_result.get("summary", {}))
+    pipeline_summary["opt_trials_executed"] = opt_trials_executed
 
     run_complete = {
         "run_id": str(uuid.uuid4()),
@@ -34,7 +45,7 @@ def emit_run_complete(
             "status": pipeline_result.get("status", "unknown"),
             "summary": pipeline_result.get("summary", {}),
         },
-        "pipeline_summary": pipeline_result.get("summary", {}),
+        "pipeline_summary": pipeline_summary,
         "optimization": optimization,
         "notifications": {
             "discord": discord_result,
