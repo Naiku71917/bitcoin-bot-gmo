@@ -988,6 +988,158 @@ strategy の `not_implemented` 残存を解消し、最小の本番用判定へ�
 - ドキュメントだけで当日運用判断が可能
 ```
 
+## 2.40 PR-40: Exchange read系フォールバックの明示契約化
+
+```text
+実運用時の切り分け容易性のため、read系API失敗時の返却契約を明示化してください。
+
+対象:
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- src/bitcoin_bot/exchange/protocol.py（必要最小限）
+- tests/test_exchange_read_fallback_contract.py（新規可）
+
+必須仕様:
+- read系失敗時の挙動を統一（空配列 or error状態の方針を明文化し実装）
+- 返却値に最低限の失敗情報（source/category）を残す
+- product_type 整合を維持
+
+実行コマンド（必須）:
+- pytest -q tests/test_exchange_read_fallback_contract.py
+- pytest -q tests/test_exchange_protocol.py
+
+受け入れ条件:
+- 失敗挙動がテストで固定される
+- 既存 exchange 契約テスト非破壊
+```
+
+## 2.41 PR-41: フェイルオーバー試験（reconnect上限/復旧）
+
+```text
+中優先DoDのフェイルオーバー試験に向け、再接続異常系の試験基盤を追加してください。
+
+対象:
+- scripts/run_live.py
+- scripts/release_check.sh
+- tests/test_live_failover_scenarios.py（新規可）
+
+必須仕様:
+- stream/実行失敗を模擬し、以下を検証
+  - reconnecting 遷移
+  - 上限超過で degraded/failed
+  - 復旧成功時 active 復帰
+- 失敗時に試験ケース名と遷移ログを出力
+
+実行コマンド（必須）:
+- pytest -q tests/test_live_failover_scenarios.py
+- bash scripts/release_check.sh
+
+受け入れ条件:
+- 主要フェイルオーバー経路を自動検証できる
+- run_progress/run_complete 契約非破壊
+```
+
+## 2.42 PR-42: reason code 固定辞書の導入
+
+```text
+通知/監査/分析の整合のため、reason code を固定辞書管理へ移行してください。
+
+対象:
+- src/bitcoin_bot/telemetry/reason_codes.py（新規）
+- src/bitcoin_bot/pipeline/live_runner.py
+- src/bitcoin_bot/strategy/core.py
+- tests/test_reason_code_dictionary.py（新規可）
+
+必須仕様:
+- reason code 候補を定数化
+- 主要出力（summary/audit）で辞書外文字列を出さない
+- 後方互換のため既存コード値を維持
+
+実行コマンド（必須）:
+- pytest -q tests/test_reason_code_dictionary.py
+- pytest -q tests/test_audit_log_contract.py
+
+受け入れ条件:
+- reason code の表記ゆれがなくなる
+- 既存契約テスト非破壊
+```
+
+## 2.43 PR-43: 監視ダッシュボード最小セット（運用開始）
+
+```text
+中優先DoDの監視運用開始に向け、最小ダッシュボード定義を追加してください。
+
+対象:
+- docker-compose.yml（必要最小限）
+- docs/operations.md
+- docs/monitoring.md（新規）
+
+必須仕様:
+- 既存 `/metrics` を使った最小可視化項目を定義
+  - run_loop_total
+  - run_loop_failures_total
+  - monitor_status
+- アラート閾値（例）をRunbookに記載
+- 既存 bot 起動手順との後方互換を維持
+
+実行コマンド（必須）:
+- docker-compose config
+- curl -fsS http://127.0.0.1:9754/metrics
+
+受け入れ条件:
+- 監視手順が文書化され当日参照可能
+- compose 構文有効 + 既存運用非破壊
+```
+
+## 2.44 PR-44: 鍵ローテーション演習スクリプト
+
+```text
+中優先DoDの鍵ローテーション演習を可能にする最小スクリプトを追加してください。
+
+対象:
+- scripts/rotate_secrets_check.sh（新規）
+- docs/operations.md
+- README.md
+
+必須仕様:
+- 旧secrets→新secretsへの切替手順を自動検証
+- 切替前後で `healthz` / `metrics` / smoke が通ることを確認
+- 本番秘密値は出力しない（マスク）
+
+実行コマンド（必須）:
+- bash scripts/rotate_secrets_check.sh
+- SMOKE_REPEAT_COUNT=3 bash scripts/smoke_live_daemon.sh
+
+受け入れ条件:
+- 演習手順が再現可能
+- secrets 契約と非致命通知契約を壊さない
+```
+
+## 2.45 PR-45: 本番移行ゲートの最終統合
+
+```text
+本番移行最終判定のため、Go/No-Goを自動判定する最小ゲートを追加してください。
+
+対象:
+- scripts/go_nogo_gate.sh（新規）
+- scripts/release_check.sh
+- docs/operations.md
+
+必須仕様:
+- 以下を順に実行し、判定を1行で出力
+  - release_check
+  - replay_check
+  - smoke 反復
+  - health/metrics 確認
+- NG時は失敗段階と次アクション（rollback参照）を出力
+
+実行コマンド（必須）:
+- bash scripts/go_nogo_gate.sh
+
+受け入れ条件:
+- 当日オペレータが1コマンドで判定可能
+- 判定根拠ログが残る
+```
+
 ---
 
 ## 3. PRレビュー時のチェックリスト
