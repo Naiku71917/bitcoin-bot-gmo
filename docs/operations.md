@@ -2,6 +2,7 @@
 
 - Docker Compose で常駐実行
 - 生成物は `var/artifacts`, ログは `var/logs`
+- K8s移行準備手順は `docs/k8s_runbook.md` を参照（現行本番は Docker Compose を正規運用）
 
 ## 日常運用コマンド
 
