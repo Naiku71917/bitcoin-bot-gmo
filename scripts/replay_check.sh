@@ -4,11 +4,35 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
+resolve_python_bin() {
+  if [[ -n "${PYTHON_BIN:-}" ]]; then
+    echo "$PYTHON_BIN"
+    return 0
+  fi
+
+  if [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
+    echo "$ROOT_DIR/.venv/bin/python"
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    command -v python3
+    return 0
+  fi
+
+  if command -v python >/dev/null 2>&1; then
+    command -v python
+    return 0
+  fi
+
+  return 1
+}
+
+PYTHON_BIN="$(resolve_python_bin || true)"
 CONFIG_PATH="${REPLAY_CONFIG_PATH:-configs/runtime.example.yaml}"
 FORCE_DRIFT="${REPLAY_FORCE_DRIFT:-0}"
 
-if [[ ! -x "$PYTHON_BIN" ]]; then
+if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
   echo "[replay-check] FAIL: python_not_found ($PYTHON_BIN)"
   exit 1
 fi
