@@ -126,6 +126,19 @@ export AUDIT_LOG_RETENTION=7
 python scripts/run_live.py
 ```
 
+## 鍵ローテーション演習（最小）
+
+```bash
+bash scripts/rotate_secrets_check.sh
+```
+
+- 旧secrets -> 新secrets の切替を自動検証します。
+- 各フェーズで以下を確認します。
+	- `healthz`
+	- `metrics`
+	- `smoke_live_daemon.sh`
+- 秘密値そのものは出力しません（プレースホルダ値で演習）。
+
 ## 監視運用（最小）
 
 - 指標定義とダッシュボード項目は `docs/monitoring.md` を参照。

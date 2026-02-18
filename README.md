@@ -95,6 +95,15 @@ printf '%s' 'https://discord.com/api/webhooks/...' > secrets/discord_webhook_url
 docker-compose up -d --build
 ```
 
+### 鍵ローテーション演習
+
+```bash
+bash scripts/rotate_secrets_check.sh
+```
+
+- 旧secrets→新secrets切替を自動検証します。
+- `healthz` / `metrics` / `smoke` を切替前後で確認します。
+
 ## 障害時の一次確認
 
 ```bash
