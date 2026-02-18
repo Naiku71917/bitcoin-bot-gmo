@@ -60,6 +60,60 @@ bash scripts/release_check.sh
 	- pytest（coverage）
 	- smoke_live_daemon
 
+## 本番移行 Go/No-Go 判定
+
+当日判定は以下を上から順に確認し、1つでも未達なら No-Go。
+
+- release_check 成功
+	- `bash scripts/release_check.sh`
+- smoke 反復成功
+	- `SMOKE_REPEAT_COUNT=3 bash scripts/smoke_live_daemon.sh`
+- secrets 設定確認
+	- `secrets/gmo_api_key`
+	- `secrets/gmo_api_secret`
+	- （利用時）`secrets/discord_webhook_url`
+- health/metrics 確認
+	- `curl -fsS http://127.0.0.1:9754/healthz`
+	- `curl -fsS http://127.0.0.1:9754/metrics`
+
+Go 条件:
+- 全チェック成功
+- `run_progress.json` の `monitor_status` が `active` または `reconnecting` の想定範囲
+- `run_complete.json` が最新実行で生成済み
+
+No-Go 条件:
+- コマンド失敗
+- smoke 反復途中失敗
+- health/metrics 応答不可
+
+## 最小ロールバック手順
+
+```bash
+# 1) 即時停止
+docker-compose down
+
+# 2) 直前安定設定へ復帰（例: config/secrets を戻す）
+#    必要に応じて git で安定コミットへ戻す
+#    git checkout <stable_commit> -- configs docker-compose.yml scripts
+
+# 3) 再起動
+docker-compose up -d --build
+
+# 4) ヘルス確認
+curl -fsS http://127.0.0.1:9754/healthz
+```
+
+## 連絡/エスカレーション（プレースホルダ）
+
+- 1次連絡先: `<ONCALL_PRIMARY>`
+- 2次連絡先: `<ONCALL_SECONDARY>`
+- エスカレーションチャネル: `<INCIDENT_CHANNEL>`
+- 連絡時に添付する情報:
+	- `docker-compose ps`
+	- `docker-compose logs --tail=200 bot`
+	- `var/artifacts/run_progress.json`
+	- `var/artifacts/run_complete.json`
+
 ## 監査ログローテーション
 
 - 監査ログは `var/logs/audit_events.jsonl` に出力され、サイズ上限超過時にローテーションされます。

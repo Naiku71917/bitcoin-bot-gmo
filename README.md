@@ -102,3 +102,7 @@ docker-compose logs --tail=200 bot
 cat var/artifacts/run_progress.json
 cat var/artifacts/run_complete.json
 ```
+
+## 本番移行判断 Runbook
+
+- Go/No-Go 判定、最小ロールバック、連絡導線は `docs/operations.md` を参照してください。
