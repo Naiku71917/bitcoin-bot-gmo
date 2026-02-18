@@ -3,6 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from bitcoin_bot.telemetry.reason_codes import (
+    REASON_CODE_BELOW_MIN_CONFIDENCE,
+    REASON_CODE_COOLDOWN_ACTIVE,
+    REASON_CODE_EMA_MOMENTUM_LONG,
+    REASON_CODE_EMA_MOMENTUM_SHORT,
+    REASON_CODE_FORCED_HOLD,
+    REASON_CODE_NO_TRADE_SETUP,
+)
+
 
 Action = Literal["buy", "sell", "hold"]
 
@@ -90,7 +99,7 @@ def decide_action(
         return StrategyDecision(
             action="hold",
             confidence=0.0,
-            reason_codes=["cooldown_active"],
+            reason_codes=[REASON_CODE_COOLDOWN_ACTIVE],
             risk=_build_risk("hold", indicators, applied_hooks.max_holding_bars),
         )
 
@@ -100,20 +109,20 @@ def decide_action(
 
     if normalized_gap > 0.2 and indicators.rsi < 70:
         action: Action = "buy"
-        reason_codes = ["ema_momentum_long"]
+        reason_codes = [REASON_CODE_EMA_MOMENTUM_LONG]
     elif normalized_gap < -0.2 and indicators.rsi > 30:
         action = "sell"
-        reason_codes = ["ema_momentum_short"]
+        reason_codes = [REASON_CODE_EMA_MOMENTUM_SHORT]
     else:
         action = "hold"
-        reason_codes = ["no_trade_setup"]
+        reason_codes = [REASON_CODE_NO_TRADE_SETUP]
         confidence = 0.0
 
     if action != "hold" and confidence < applied_hooks.min_confidence:
         return StrategyDecision(
             action="hold",
             confidence=confidence,
-            reason_codes=[*reason_codes, "below_min_confidence"],
+            reason_codes=[*reason_codes, REASON_CODE_BELOW_MIN_CONFIDENCE],
             risk=_build_risk("hold", indicators, applied_hooks.max_holding_bars),
         )
 
@@ -145,7 +154,7 @@ def hold_decision(
     return StrategyDecision(
         action="hold",
         confidence=decision.confidence,
-        reason_codes=[*decision.reason_codes, "forced_hold"],
+        reason_codes=[*decision.reason_codes, REASON_CODE_FORCED_HOLD],
         risk=_build_risk("hold", resolved_indicators, resolved_hooks.max_holding_bars),
     )
 

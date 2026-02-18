@@ -15,6 +15,12 @@ from bitcoin_bot.exchange.protocol import (
 )
 from bitcoin_bot.optimizer.gates import evaluate_risk_guards
 from bitcoin_bot.strategy.core import DecisionHooks, IndicatorInput, decide_action
+from bitcoin_bot.telemetry.reason_codes import (
+    REASON_CODE_EXECUTE_ORDERS_DISABLED,
+    REASON_CODE_STREAM_DEGRADED,
+    REASON_CODE_STREAM_RECONNECTING,
+    normalize_reason_codes,
+)
 from bitcoin_bot.telemetry.reporters import emit_run_progress
 from bitcoin_bot.utils.logging import append_audit_event
 
@@ -115,7 +121,7 @@ def run_live(
     order_attempted = False
     order_status = "not_attempted"
     if not execute_orders_enabled:
-        stop_reason_codes.append("execute_orders_disabled")
+        stop_reason_codes.append(REASON_CODE_EXECUTE_ORDERS_DISABLED)
     elif guard_result["status"] == "success" and decision.action in {"buy", "sell"}:
         order_attempted = True
         append_audit_event(
@@ -171,20 +177,22 @@ def run_live(
     else:
         order_status = "skipped_due_to_risk"
     if guard_result["status"] != "success":
+        risk_reason_codes = normalize_reason_codes(guard_result["reason_codes"])
         append_audit_event(
             logs_dir=config.paths.logs_dir,
             event_type="risk_stop",
             payload={
                 "status": guard_result["status"],
-                "reason_codes": guard_result["reason_codes"],
+                "reason_codes": risk_reason_codes,
             },
         )
 
-    reason_codes = [*decision.reason_codes, *stop_reason_codes]
+    reason_codes = normalize_reason_codes([*decision.reason_codes, *stop_reason_codes])
+    stop_reason_codes = normalize_reason_codes(stop_reason_codes)
     if stream_monitor_status == "reconnecting":
-        reason_codes.append("stream_reconnecting")
+        reason_codes.append(REASON_CODE_STREAM_RECONNECTING)
     elif stream_monitor_status == "degraded":
-        reason_codes.append("stream_degraded")
+        reason_codes.append(REASON_CODE_STREAM_DEGRADED)
 
     resolved_monitor_status = (
         "degraded" if guard_result["status"] != "success" else stream_monitor_status
