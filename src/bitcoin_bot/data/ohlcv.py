@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Literal
 
 import pandas as pd
@@ -59,3 +60,75 @@ def validate_ohlcv_row(row: dict[str, object]) -> bool:
 
     timestamp = frame.iloc[0]["timestamp"]
     return isinstance(timestamp, datetime)
+
+
+def _synthetic_ohlcv(*, symbol: str, timeframe: str) -> pd.DataFrame:
+    base_ts = datetime(2026, 1, 1, tzinfo=UTC)
+    rows: list[dict[str, object]] = []
+    for index in range(120):
+        close = 100.0 + (index * 0.2) + ((index % 7) - 3) * 0.05
+        open_price = close - 0.1
+        high = close + 0.2
+        low = close - 0.2
+        rows.append(
+            {
+                "timestamp": base_ts + timedelta(minutes=index),
+                "open": open_price,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": 10 + (index % 5),
+            }
+        )
+
+    return normalize_ohlcv(
+        rows,
+        provider="synthetic",
+        symbol=symbol,
+        timeframe=timeframe,
+        missing_policy="drop",
+    )
+
+
+def load_ohlcv_for_backtest(
+    *,
+    csv_path: str,
+    symbol: str,
+    timeframe: str,
+    provider: str = "csv",
+    missing_policy: MissingPolicy = "drop",
+) -> tuple[pd.DataFrame, str, str | None]:
+    path = Path(csv_path)
+    if not path.exists():
+        return (
+            _synthetic_ohlcv(symbol=symbol, timeframe=timeframe),
+            "synthetic_fallback",
+            "csv_not_found",
+        )
+
+    try:
+        csv_frame = pd.read_csv(path)
+    except Exception:
+        return (
+            _synthetic_ohlcv(symbol=symbol, timeframe=timeframe),
+            "synthetic_fallback",
+            "csv_read_error",
+        )
+
+    rows = csv_frame.to_dict("records")
+    frame = normalize_ohlcv(
+        rows,
+        provider=provider,
+        symbol=symbol,
+        timeframe=timeframe,
+        missing_policy=missing_policy,
+    )
+
+    if len(frame) < 2:
+        return (
+            _synthetic_ohlcv(symbol=symbol, timeframe=timeframe),
+            "synthetic_fallback",
+            "insufficient_rows",
+        )
+
+    return frame, "csv", None
