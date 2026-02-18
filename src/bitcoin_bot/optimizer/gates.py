@@ -1,5 +1,49 @@
 from __future__ import annotations
 
+from bitcoin_bot.telemetry.reason_codes import (
+    REASON_CODE_DAILY_LOSS_LIMIT_EXCEEDED,
+    REASON_CODE_MAX_DRAWDOWN_EXCEEDED,
+    REASON_CODE_MAX_LEVERAGE_EXCEEDED,
+    REASON_CODE_MAX_POSITION_SIZE_EXCEEDED,
+    REASON_CODE_MAX_TRADE_LOSS_EXCEEDED,
+    REASON_CODE_WALLET_DRIFT_EXCEEDED,
+    normalize_reason_codes,
+)
+
+
+RISK_CONDITION_MATRIX = {
+    "max_drawdown": {
+        "status": "abort",
+        "reason_code": REASON_CODE_MAX_DRAWDOWN_EXCEEDED,
+    },
+    "daily_loss_limit": {
+        "status": "degraded",
+        "reason_code": REASON_CODE_DAILY_LOSS_LIMIT_EXCEEDED,
+    },
+    "max_position_size": {
+        "status": "degraded",
+        "reason_code": REASON_CODE_MAX_POSITION_SIZE_EXCEEDED,
+    },
+    "max_trade_loss": {
+        "status": "abort",
+        "reason_code": REASON_CODE_MAX_TRADE_LOSS_EXCEEDED,
+    },
+    "max_leverage": {
+        "status": "degraded",
+        "reason_code": REASON_CODE_MAX_LEVERAGE_EXCEEDED,
+    },
+    "max_wallet_drift": {
+        "status": "degraded",
+        "reason_code": REASON_CODE_WALLET_DRIFT_EXCEEDED,
+    },
+}
+
+_STATUS_SEVERITY = {
+    "success": 0,
+    "degraded": 1,
+    "abort": 2,
+}
+
 
 def evaluate_risk_guards(
     *,
@@ -19,33 +63,27 @@ def evaluate_risk_guards(
     reason_codes: list[str] = []
     status = "success"
 
-    if current_drawdown > max_drawdown:
-        status = "abort"
-        reason_codes.append("max_drawdown_exceeded")
+    checks = (
+        ("max_drawdown", current_drawdown > max_drawdown),
+        ("daily_loss_limit", current_daily_loss > daily_loss_limit),
+        ("max_position_size", current_position_size > max_position_size),
+        ("max_trade_loss", current_trade_loss > max_trade_loss),
+        ("max_leverage", current_leverage > max_leverage),
+        ("max_wallet_drift", current_wallet_drift > max_wallet_drift),
+    )
 
-    if current_daily_loss > daily_loss_limit:
-        if status != "abort":
-            status = "degraded"
-        reason_codes.append("daily_loss_limit_exceeded")
+    for condition_name, triggered in checks:
+        if not triggered:
+            continue
 
-    if current_position_size > max_position_size:
-        if status != "abort":
-            status = "degraded"
-        reason_codes.append("max_position_size_exceeded")
+        condition = RISK_CONDITION_MATRIX[condition_name]
+        reason_codes.append(condition["reason_code"])
 
-    if current_trade_loss > max_trade_loss:
-        status = "abort"
-        reason_codes.append("max_trade_loss_exceeded")
+        candidate_status = condition["status"]
+        if _STATUS_SEVERITY[candidate_status] > _STATUS_SEVERITY[status]:
+            status = candidate_status
 
-    if current_leverage > max_leverage:
-        if status != "abort":
-            status = "degraded"
-        reason_codes.append("max_leverage_exceeded")
-
-    if current_wallet_drift > max_wallet_drift:
-        if status != "abort":
-            status = "degraded"
-        reason_codes.append("wallet_drift_exceeded")
+    reason_codes = normalize_reason_codes(reason_codes)
 
     return {
         "status": status,
@@ -66,6 +104,7 @@ def evaluate_risk_guards(
             "max_leverage": max_leverage,
             "max_wallet_drift": max_wallet_drift,
         },
+        "reason_matrix": RISK_CONDITION_MATRIX,
     }
 
 

@@ -194,6 +194,8 @@ def run_live(
     elif stream_monitor_status == "degraded":
         reason_codes.append(REASON_CODE_STREAM_DEGRADED)
 
+    reason_codes = normalize_reason_codes(reason_codes)
+
     resolved_monitor_status = (
         "degraded" if guard_result["status"] != "success" else stream_monitor_status
     )

@@ -99,6 +99,22 @@ Go 条件:
 - `run_progress.json` の `monitor_status` が `active` または `reconnecting` の想定範囲
 - `run_complete.json` が最新実行で生成済み
 
+### 停止/縮退条件マトリクス（固定）
+
+Go/No-Go 判定時は以下を基準に確認します。
+
+| risk condition | status | reason_code |
+|---|---|---|
+| `current_drawdown > max_drawdown` | `abort` | `max_drawdown_exceeded` |
+| `current_daily_loss > daily_loss_limit` | `degraded` | `daily_loss_limit_exceeded` |
+| `current_position_size > max_position_size` | `degraded` | `max_position_size_exceeded` |
+| `current_trade_loss > max_trade_loss` | `abort` | `max_trade_loss_exceeded` |
+| `current_leverage > max_leverage` | `degraded` | `max_leverage_exceeded` |
+| `current_wallet_drift > max_wallet_drift` | `degraded` | `wallet_drift_exceeded` |
+
+補足:
+- 複数条件同時発火時は `abort` が最優先です。
+
 No-Go 条件:
 - コマンド失敗
 - smoke 反復途中失敗
