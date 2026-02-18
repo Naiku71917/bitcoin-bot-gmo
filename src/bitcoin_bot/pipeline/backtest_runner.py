@@ -4,6 +4,18 @@ from bitcoin_bot.config.models import RuntimeConfig
 from bitcoin_bot.optimizer.orchestrator import score_from_backtest_metrics
 
 
+REPLAY_SUMMARY_KEYS = (
+    "mode",
+    "symbol",
+    "product_type",
+    "return",
+    "max_drawdown",
+    "win_rate",
+    "profit_factor",
+    "trade_count",
+)
+
+
 def run_backtest(config: RuntimeConfig) -> dict:
     metrics = {
         "return": 0.08,
@@ -23,3 +35,8 @@ def run_backtest(config: RuntimeConfig) -> dict:
         },
         "optimization_score": score_from_backtest_metrics(metrics),
     }
+
+
+def extract_replay_summary(pipeline_result: dict) -> dict:
+    summary = dict(pipeline_result.get("summary", {}))
+    return {key: summary.get(key) for key in REPLAY_SUMMARY_KEYS}
