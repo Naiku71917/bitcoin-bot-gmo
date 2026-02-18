@@ -19,6 +19,7 @@ run_stage() {
 
 run_stage "pre-commit" /home/truen/projects/bitcoin-bot-gmo/.venv/bin/pre-commit run --all-files
 run_stage "pytest-quick" /home/truen/projects/bitcoin-bot-gmo/.venv/bin/python -m pytest -q
+run_stage "pytest-live-failover" /home/truen/projects/bitcoin-bot-gmo/.venv/bin/python -m pytest -q tests/test_live_failover_scenarios.py
 run_stage "pytest-coverage" /home/truen/projects/bitcoin-bot-gmo/.venv/bin/python -m pytest -q --cov=src/bitcoin_bot --cov-report=term-missing --cov-report=xml --cov-report=html
 run_stage "smoke-live-daemon" bash scripts/smoke_live_daemon.sh
 

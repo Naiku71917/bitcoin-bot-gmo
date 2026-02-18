@@ -97,11 +97,31 @@ def _run_daemon_loop(
     reconnect_wait_seconds: int,
     runtime_state: RuntimeMetricsState | None = None,
     run_func: Callable[..., dict] | None = None,
+    transition_logger: Callable[[dict[str, object]], None] | None = None,
 ) -> tuple[int, int]:
     execute_run = run_func or run
     exit_code = 0
     reconnect_count = 0
     metrics_state = runtime_state or RuntimeMetricsState(stop_event=stop_event)
+
+    def _log_transition(
+        *,
+        monitor_status: str,
+        source: str,
+        status: str,
+        last_error: str | None,
+    ) -> None:
+        if transition_logger is None:
+            return
+        transition_logger(
+            {
+                "monitor_status": monitor_status,
+                "source": source,
+                "status": status,
+                "last_error": last_error,
+                "reconnect_count": reconnect_count,
+            }
+        )
 
     while not stop_event.is_set():
         metrics_state.run_loop_total += 1
@@ -117,7 +137,37 @@ def _run_daemon_loop(
             if resolved_monitor_status not in {"active", "reconnecting", "degraded"}:
                 resolved_monitor_status = "active"
             metrics_state.monitor_status = resolved_monitor_status
-            if reconnect_count > 0:
+            if resolved_monitor_status == "reconnecting":
+                emit_run_progress(
+                    artifacts_dir=artifacts_dir,
+                    mode="live",
+                    status="running",
+                    last_error="stream_reconnecting",
+                    monitor_status="reconnecting",
+                    reconnect_count=reconnect_count,
+                )
+                _log_transition(
+                    monitor_status="reconnecting",
+                    source="stream",
+                    status="running",
+                    last_error="stream_reconnecting",
+                )
+            elif resolved_monitor_status == "degraded":
+                emit_run_progress(
+                    artifacts_dir=artifacts_dir,
+                    mode="live",
+                    status="degraded",
+                    last_error="stream_degraded",
+                    monitor_status="degraded",
+                    reconnect_count=reconnect_count,
+                )
+                _log_transition(
+                    monitor_status="degraded",
+                    source="stream",
+                    status="degraded",
+                    last_error="stream_degraded",
+                )
+            elif reconnect_count > 0:
                 emit_run_progress(
                     artifacts_dir=artifacts_dir,
                     mode="live",
@@ -125,6 +175,12 @@ def _run_daemon_loop(
                     last_error=None,
                     monitor_status=resolved_monitor_status,
                     reconnect_count=reconnect_count,
+                )
+                _log_transition(
+                    monitor_status=resolved_monitor_status,
+                    source="execution",
+                    status="running",
+                    last_error=None,
                 )
         except Exception as exc:
             reconnect_count += 1
@@ -138,6 +194,12 @@ def _run_daemon_loop(
                 monitor_status="reconnecting",
                 reconnect_count=reconnect_count,
             )
+            _log_transition(
+                monitor_status="reconnecting",
+                source="execution",
+                status="degraded",
+                last_error="reconnecting_after_error",
+            )
             if reconnect_count > max_reconnect_retries:
                 metrics_state.monitor_status = "degraded"
                 emit_run_progress(
@@ -147,6 +209,12 @@ def _run_daemon_loop(
                     last_error=str(exc),
                     monitor_status="degraded",
                     reconnect_count=reconnect_count,
+                )
+                _log_transition(
+                    monitor_status="degraded",
+                    source="execution",
+                    status="failed",
+                    last_error=str(exc),
                 )
                 exit_code = 1
                 stop_event.set()
