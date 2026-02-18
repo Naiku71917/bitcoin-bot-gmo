@@ -48,6 +48,22 @@ SMOKE_REPEAT_COUNT=3 bash scripts/smoke_live_daemon.sh
 - `SMOKE_REPEAT_COUNT` を指定すると、health/artifacts 検証を指定回数反復します。
 - 失敗時は即終了し、`failed_iteration=<失敗回>/<総回数>` を出力します。
 
+## 24h連続稼働ゲート（最小）
+
+```bash
+SOAK_TOTAL_ITERATIONS=6 SOAK_INTERVAL_SECONDS=5 bash scripts/soak_24h_gate.sh
+```
+
+- 本番想定の長時間運用を、反復回数と間隔で近似検証します。
+- 主要環境変数:
+	- `SOAK_TOTAL_ITERATIONS`（既定: `288`）
+	- `SOAK_INTERVAL_SECONDS`（既定: `300`）
+- 途中失敗時は以下を出力します。
+	- `failed_iteration`
+	- `final_health_status`
+	- 最新 `run_progress.json` / `run_complete.json`
+- 成功時は1行サマリ（成功回数/経過秒）を出力します。
+
 ## リリース前フルチェック
 
 ```bash

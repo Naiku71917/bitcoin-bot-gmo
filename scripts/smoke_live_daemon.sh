@@ -10,6 +10,7 @@ MAX_ARTIFACT_RETRIES="${SMOKE_MAX_ARTIFACT_RETRIES:-30}"
 SLEEP_SECONDS="${SMOKE_RETRY_INTERVAL_SECONDS:-2}"
 SIMULATE_FAILURE="${SMOKE_FORCE_FAIL:-0}"
 REPEAT_COUNT="${SMOKE_REPEAT_COUNT:-1}"
+KEEP_CONTAINER_ON_EXIT="${SMOKE_KEEP_CONTAINER_ON_EXIT:-0}"
 
 if [[ "${1:-}" == "--simulate-failure" ]]; then
   SIMULATE_FAILURE="1"
@@ -19,6 +20,9 @@ RUN_PROGRESS_PATH="var/artifacts/run_progress.json"
 RUN_COMPLETE_PATH="var/artifacts/run_complete.json"
 
 cleanup() {
+  if [[ "$KEEP_CONTAINER_ON_EXIT" == "1" ]]; then
+    return
+  fi
   docker-compose down >/dev/null 2>&1 || true
 }
 
