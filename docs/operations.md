@@ -192,6 +192,23 @@ bash scripts/monthly_report.sh
 	- `var/artifacts/monthly/monthly_report_YYYYMM.md`
 - 失敗時は不足データと次アクションを表示します。
 
+## 実接続ドリル（非破壊）
+
+```bash
+bash scripts/live_connectivity_drill.sh
+```
+
+- 注文送信なしで以下を検証します。
+	- API認証
+	- ticker / balance / position 読取
+	- stream接続と再接続
+- 結果は `var/artifacts/live_connectivity_drill.json` に保存されます。
+- 失敗時は原因分類を出力します。
+	- `auth`
+	- `network`
+	- `rate_limit`
+	- `exchange`
+
 ## 鍵ローテーション演習（最小）
 
 ```bash

@@ -57,3 +57,16 @@ docker-compose --profile monitoring up -d
   - `docker-compose logs --tail=200 bot`
   - `var/artifacts/run_progress.json`
   - `var/artifacts/run_complete.json`
+
+## 実接続ドリル結果の見方
+
+```bash
+bash scripts/live_connectivity_drill.sh
+```
+
+- 成果物: `var/artifacts/live_connectivity_drill.json`
+- 失敗カテゴリ:
+   - `auth`: APIキー/シークレット不備
+   - `network`: 通信断/タイムアウト
+   - `rate_limit`: API制限
+   - `exchange`: 取引所応答異常/想定外形式
