@@ -126,6 +126,21 @@ export AUDIT_LOG_RETENTION=7
 python scripts/run_live.py
 ```
 
+## 監視運用（最小）
+
+- 指標定義とダッシュボード項目は `docs/monitoring.md` を参照。
+- 監視UIが必要な場合のみ、以下で monitoring profile を起動。
+
+```bash
+docker-compose --profile monitoring up -d
+```
+
+### アラート閾値（例）
+
+- `run_loop_failures_total` が 5分で `+3` 以上
+- `monitor_status{status="degraded"}` が 2分以上継続
+- `monitor_status{status="reconnecting"}` が 5分以上継続
+
 ## 一次切り分け（短縮版）
 
 - Logs:

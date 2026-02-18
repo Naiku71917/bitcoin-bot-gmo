@@ -44,3 +44,37 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["monitoring"]
+    command:
+      - sh
+      - -lc
+      - |
+        cat > /tmp/prometheus.yml <<'EOF'
+        global:
+          scrape_interval: 15s
+        scrape_configs:
+          - job_name: bitcoin-bot-gmo
+            static_configs:
+              - targets: ["bot:9754"]
+        EOF
+        exec /bin/prometheus --config.file=/tmp/prometheus.yml --storage.tsdb.path=/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - bot
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    profiles: ["monitoring"]
+    environment:
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
