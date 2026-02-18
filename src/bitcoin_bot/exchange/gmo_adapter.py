@@ -68,14 +68,19 @@ class GMOAdapter(ExchangeProtocol):
             return self.normalize_error(source_code="INVALID_PARAM", message=message)
         return self.normalize_error(source_code="EXCHANGE_ERROR", message=message)
 
-    def _auth_headers(self, method: str, path_with_query: str) -> dict[str, str] | None:
+    def _auth_headers(
+        self,
+        method: str,
+        path_with_query: str,
+        body_text: str = "",
+    ) -> dict[str, str] | None:
         api_key = os.getenv("GMO_API_KEY")
         api_secret = os.getenv("GMO_API_SECRET")
         if not api_key or not api_secret:
             return None
 
         timestamp = str(int(time() * 1000))
-        sign_text = f"{timestamp}{method}{path_with_query}"
+        sign_text = f"{timestamp}{method}{path_with_query}{body_text}"
         sign = hmac.new(
             api_secret.encode("utf-8"),
             sign_text.encode("utf-8"),
@@ -94,15 +99,22 @@ class GMOAdapter(ExchangeProtocol):
         method: str,
         path: str,
         params: dict[str, str] | None = None,
+        body: dict[str, object] | None = None,
         auth: bool = False,
     ) -> dict | NormalizedError:
         query = urlencode(params or {})
         path_with_query = f"{path}?{query}" if query else path
         url = f"{self.api_base_url}{path_with_query}"
 
+        body_text = json.dumps(body, separators=(",", ":"), ensure_ascii=False)
+        if body is not None:
+            body_text = json.dumps(body, separators=(",", ":"), ensure_ascii=False)
+        else:
+            body_text = ""
+
         headers = {"Content-Type": "application/json"}
         if auth:
-            auth_headers = self._auth_headers(method, path_with_query)
+            auth_headers = self._auth_headers(method, path_with_query, body_text)
             if auth_headers is None:
                 return self.normalize_error(
                     source_code="AUTH_FAILED",
@@ -110,7 +122,12 @@ class GMOAdapter(ExchangeProtocol):
                 )
             headers.update(auth_headers)
 
-        request = Request(url=url, headers=headers, method=method)
+        request = Request(
+            url=url,
+            headers=headers,
+            data=body_text.encode("utf-8") if body is not None else None,
+            method=method,
+        )
         try:
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 return json.loads(response.read().decode("utf-8"))
@@ -430,6 +447,81 @@ class GMOAdapter(ExchangeProtocol):
 
     def place_order(self, order_request: NormalizedOrder) -> NormalizedOrderState:
         reduce_only = order_request.reduce_only if self._is_leverage else None
+        if self.use_http:
+            request_body: dict[str, object] = {
+                "symbol": order_request.symbol,
+                "side": order_request.side.upper(),
+                "executionType": order_request.order_type.upper(),
+                "size": str(order_request.qty),
+            }
+            if order_request.price is not None:
+                request_body["price"] = str(order_request.price)
+            if order_request.time_in_force is not None:
+                request_body["timeInForce"] = order_request.time_in_force
+            if self._is_leverage:
+                request_body["reduceOnly"] = bool(reduce_only)
+
+            payload = self._request_json(
+                method="POST",
+                path="/private/v1/order",
+                body=request_body,
+                auth=True,
+            )
+
+            if isinstance(payload, NormalizedError):
+                return NormalizedOrderState(
+                    order_id=order_request.client_order_id,
+                    status="error",
+                    symbol=order_request.symbol,
+                    side=order_request.side,
+                    order_type=order_request.order_type,
+                    qty=order_request.qty,
+                    price=order_request.price,
+                    product_type=self.product_type,
+                    reduce_only=reduce_only,
+                    raw={
+                        "exchange": "gmo",
+                        "error": {
+                            "category": payload.category,
+                            "retryable": payload.retryable,
+                            "source_code": payload.source_code,
+                            "message": payload.message,
+                        },
+                    },
+                )
+
+            response_data = payload.get("data", {}) if isinstance(payload, dict) else {}
+            if isinstance(response_data, list):
+                response_data = response_data[0] if response_data else {}
+            if not isinstance(response_data, dict):
+                response_data = {}
+
+            resolved_order_id = str(
+                response_data.get("orderId")
+                or response_data.get("id")
+                or order_request.client_order_id
+            )
+            resolved_status = str(response_data.get("status", "accepted"))
+
+            return NormalizedOrderState(
+                order_id=resolved_order_id,
+                status=resolved_status,
+                symbol=order_request.symbol,
+                side=order_request.side,
+                order_type=order_request.order_type,
+                qty=order_request.qty,
+                price=order_request.price,
+                product_type=self.product_type,
+                reduce_only=reduce_only,
+                raw={
+                    "exchange": "gmo",
+                    "product_type": self.product_type,
+                    "client_order_id": order_request.client_order_id,
+                    "request": request_body,
+                    "response": response_data,
+                },
+            )
+
         return NormalizedOrderState(
             order_id=order_request.client_order_id,
             status="accepted",
