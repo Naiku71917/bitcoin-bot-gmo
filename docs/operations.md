@@ -177,6 +177,21 @@ export AUDIT_LOG_RETENTION=7
 python scripts/run_live.py
 ```
 
+## 月次レポート自動生成（最小）
+
+```bash
+bash scripts/monthly_report.sh
+```
+
+- 入力:
+	- `var/artifacts/run_complete.json`
+	- `var/artifacts/run_progress.json`
+	- `var/artifacts/go_nogo_gate.log`
+- 出力:
+	- `var/artifacts/monthly/monthly_report_YYYYMM.json`
+	- `var/artifacts/monthly/monthly_report_YYYYMM.md`
+- 失敗時は不足データと次アクションを表示します。
+
 ## 鍵ローテーション演習（最小）
 
 ```bash
