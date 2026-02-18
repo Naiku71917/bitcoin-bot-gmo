@@ -1140,6 +1140,153 @@ strategy の `not_implemented` 残存を解消し、最小の本番用判定へ�
 - 判定根拠ログが残る
 ```
 
+## 2.46 PR-46: run_complete スキーマ凍結（version導入）
+
+```text
+run_complete 契約を運用固定するため、スキーマversionを導入して凍結運用を開始してください。
+
+対象:
+- src/bitcoin_bot/telemetry/reporters.py
+- docs/run_complete_schema.md
+- tests/test_main_contract.py
+- tests/test_run_complete_schema_version.py（新規可）
+
+必須仕様:
+- `run_complete.json` に `schema_version` を追加
+- 既存キー構造は後方互換を維持
+- version 変更手順を `docs/run_complete_schema.md` に明記
+
+実行コマンド（必須）:
+- pytest -q tests/test_main_contract.py
+- pytest -q tests/test_run_complete_schema_version.py
+
+受け入れ条件:
+- run_complete 契約を壊さず version 固定がテスト化される
+- marker 出力契約非破壊
+```
+
+## 2.47 PR-47: 自動停止/縮退条件マトリクスの固定化
+
+```text
+本番判断の一貫性のため、停止/縮退条件と reason code の対応表を実装とRunbookで固定してください。
+
+対象:
+- src/bitcoin_bot/optimizer/gates.py
+- src/bitcoin_bot/pipeline/live_runner.py
+- docs/operations.md
+- tests/test_risk_guard_reason_matrix.py（新規可）
+
+必須仕様:
+- 各 risk condition に対する `status`（success/degraded/abort）を表で固定
+- 出力 reason code が辞書値のみになることを保証
+- Go/No-Go 参照先として Runbook に同マトリクスを掲載
+
+実行コマンド（必須）:
+- pytest -q tests/test_risk_guards.py
+- pytest -q tests/test_risk_guard_reason_matrix.py
+
+受け入れ条件:
+- 停止/縮退判断の表記ゆれがなくなる
+- 既存 risk 契約テスト非破壊
+```
+
+## 2.48 PR-48: Docker 24h連続稼働検証ゲート
+
+```text
+高優先DoDの24h連続稼働検証に向け、長時間運用ゲートを最小追加してください。
+
+対象:
+- scripts/soak_24h_gate.sh（新規）
+- scripts/smoke_live_daemon.sh（必要最小限）
+- docs/operations.md
+
+必須仕様:
+- 反復実行で24h相当の稼働確認（回数/間隔は環境変数）
+- 途中失敗時に失敗回・最終ヘルス・最新artifactを出力
+- 成功時は要約（成功回数・経過時間）を1行出力
+
+実行コマンド（必須）:
+- SOAK_TOTAL_ITERATIONS=6 SOAK_INTERVAL_SECONDS=5 bash scripts/soak_24h_gate.sh
+
+受け入れ条件:
+- 連続稼働検証を自動化できる
+- 異常時の診断情報が十分
+```
+
+## 2.49 PR-49: GMO 現物/レバ差分表の運用化
+
+```text
+高優先DoDの差分承認に向け、現物/レバの差分表をコードと整合する形で文書化してください。
+
+対象:
+- docs/exchange_spot_leverage_matrix.md（新規）
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- tests/test_exchange_protocol.py
+
+必須仕様:
+- 以下差分を表で明文化
+  - reduce_only
+  - positions/balances 取得経路
+  - 注文属性と制約
+- 表の各項目に対応するテストを明示
+- 差分表と実装の不整合をなくす
+
+実行コマンド（必須）:
+- pytest -q tests/test_exchange_protocol.py
+- pytest -q tests/test_exchange_read_fallback_contract.py
+
+受け入れ条件:
+- レビューで承認可能な差分資料になる
+- adapter 契約テスト非破壊
+```
+
+## 2.50 PR-50: Kubernetes最小運用手順（低優先DoD）
+
+```text
+低優先DoDの先行対応として、K8s最小運用手順をドキュメント化してください。
+
+対象:
+- docs/k8s_runbook.md（新規）
+- docs/operations.md
+
+必須仕様:
+- rolling update / rollback の最小手順
+- readiness/liveness/startup probe の設定例
+- Secret/ConfigMap/PVC 分離方針
+
+実行コマンド（必須）:
+- docker-compose config
+- bash scripts/go_nogo_gate.sh
+
+受け入れ条件:
+- K8s移行前レビューの土台として利用可能
+- 既存Docker運用手順と矛盾しない
+```
+
+## 2.51 PR-51: 月次レポート自動化（低優先DoD）
+
+```text
+低優先DoDの月次レポート自動化に向け、最小レポート生成スクリプトを追加してください。
+
+対象:
+- scripts/monthly_report.sh（新規）
+- docs/operations.md
+- var/artifacts/monthly/（出力先）
+
+必須仕様:
+- `run_complete.json` / `go_nogo_gate.log` / `run_progress.json` から月次集計を作成
+- 成果物は markdown または json で保存
+- 失敗時は不足データと次アクションを出力
+
+実行コマンド（必須）:
+- bash scripts/monthly_report.sh
+- bash scripts/release_check.sh
+
+受け入れ条件:
+- 月次運用の定型出力を自動生成できる
+- 既存運用契約（run_complete/monitor）非破壊
+```
+
 ---
 
 ## 3. PRレビュー時のチェックリスト
