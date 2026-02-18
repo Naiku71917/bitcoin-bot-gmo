@@ -1287,6 +1287,178 @@ run_complete 契約を運用固定するため、スキーマversionを導入し
 - 既存運用契約（run_complete/monitor）非破壊
 ```
 
+## 2.52 PR-52: GMO実注文HTTP実装（place_order）
+
+```text
+売買エンジンの本番準備として、GMO実注文をHTTPで実行する最小実装へ更新してください。
+
+対象:
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- src/bitcoin_bot/exchange/protocol.py（必要最小限）
+- tests/test_exchange_order_http_runtime.py（新規可）
+
+必須仕様:
+- `place_order` を実HTTPリクエストベースへ更新（認証ヘッダ含む）
+- 失敗時は `NormalizedError` 相当の情報を `NormalizedOrderState.raw` に保持
+- `product_type` と `reduce_only` 制約（spotはNone、leverageは許可）を維持
+
+実行コマンド（必須）:
+- pytest -q tests/test_exchange_order_http_runtime.py
+- pytest -q tests/test_exchange_protocol.py
+
+受け入れ条件:
+- 注文成功/失敗が判別できる
+- adapter 契約テスト非破壊
+```
+
+## 2.53 PR-53: live実接続切替（use_http切替制御）
+
+```text
+実運用切替のため、live runner が実注文実行時に `use_http` を正しく切り替えるようにしてください。
+
+対象:
+- src/bitcoin_bot/pipeline/live_runner.py
+- src/bitcoin_bot/config/models.py（必要最小限）
+- src/bitcoin_bot/config/validator.py（必要最小限）
+- tests/test_live_http_switching.py（新規可）
+
+必須仕様:
+- 設定で `live_http_enabled`（仮名可）を制御し、`execute_orders=true` 時のみ有効化
+- dry-run系（paper/backtest）ではHTTP実行をしない
+- run_progress/run_complete 契約を維持
+
+実行コマンド（必須）:
+- pytest -q tests/test_live_http_switching.py
+- pytest -q tests/test_live_execute_orders_flow.py
+
+受け入れ条件:
+- 誤って本番注文しない保護がある
+- 既存 live 契約テスト非破壊
+```
+
+## 2.54 PR-54: 注文ライフサイクル管理（最小）
+
+```text
+実運用の注文管理を強化するため、注文ライフサイクルの最小状態遷移を実装してください。
+
+対象:
+- src/bitcoin_bot/pipeline/live_runner.py
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- tests/test_order_lifecycle_runtime.py（新規可）
+
+必須仕様:
+- `accepted -> active -> filled/cancelled/rejected` の最小遷移を扱う
+- `fetch_order` と `cancel_order` の結果を監査ログへ保存
+- 失敗時に reason code と再試行可否を残す
+
+実行コマンド（必須）:
+- pytest -q tests/test_order_lifecycle_runtime.py
+- pytest -q tests/test_audit_log_contract.py
+
+受け入れ条件:
+- 注文状態の追跡可能性が向上
+- 監査契約非破壊
+```
+
+## 2.55 PR-55: 動的ポジションサイズ制御
+
+```text
+固定数量 `0.01` を廃止し、資金率とボラ連動の最小サイズ制御を導入してください。
+
+対象:
+- src/bitcoin_bot/pipeline/live_runner.py
+- src/bitcoin_bot/config/models.py（必要最小限）
+- tests/test_position_sizing_runtime.py（新規可）
+
+必須仕様:
+- 残高・ATR・リスク上限から qty を算出
+- 最小注文数量・丸めルールを設定化
+- 算出根拠を `summary` と監査ログへ残す
+
+実行コマンド（必須）:
+- pytest -q tests/test_position_sizing_runtime.py
+- pytest -q tests/test_live_execute_orders_flow.py
+
+受け入れ条件:
+- 数量が設定と市場条件に応じて変化する
+- 既存 live 契約テスト非破壊
+```
+
+## 2.56 PR-56: 実データ駆動backtest（疑似メトリクス脱却）
+
+```text
+バックテストの実効性向上のため、固定メトリクスを実データ計算へ置換してください。
+
+対象:
+- src/bitcoin_bot/pipeline/backtest_runner.py
+- src/bitcoin_bot/data/ohlcv.py
+- tests/test_backtest_data_driven_metrics.py（新規可）
+
+必須仕様:
+- OHLCV入力から trade_count/return/max_drawdown 等を算出
+- 異常データ時は fail-fast または明示的 fallback
+- replay 契約（同一入力で同一 summary）を維持
+
+実行コマンド（必須）:
+- pytest -q tests/test_backtest_data_driven_metrics.py
+- bash scripts/replay_check.sh
+
+受け入れ条件:
+- backtest 指標が入力データで変化する
+- replay 契約非破壊
+```
+
+## 2.57 PR-57: 実接続E2Eドリル（非破壊）
+
+```text
+実環境E2E不足を補うため、非破壊の接続ドリル手順を追加してください。
+
+対象:
+- scripts/live_connectivity_drill.sh（新規）
+- docs/operations.md
+- docs/monitoring.md
+
+必須仕様:
+- 注文送信なしで以下を検証
+  - API認証
+  - ticker/balance/position 読取
+  - stream接続と再接続
+- 失敗時に原因分類（auth/network/rate_limit/exchange）を出力
+
+実行コマンド（必須）:
+- bash scripts/live_connectivity_drill.sh
+- bash scripts/go_nogo_gate.sh
+
+受け入れ条件:
+- 本番投入前の接続可否を安全に判定できる
+- 既存運用契約非破壊
+```
+
+## 2.58 PR-58: 本番準備最終チェック（運用版）
+
+```text
+実運用開始直前の判断を固定するため、最終プレフライトを追加してください。
+
+対象:
+- scripts/go_live_prep.sh（新規）
+- docs/operations.md
+
+必須仕様:
+- 以下を順に実行
+  - go_nogo_gate
+  - soak_24h_gate（短縮設定可）
+  - monthly_report
+  - live_connectivity_drill
+- 最終判定を1行で出力し、失敗時は次アクションを表示
+
+実行コマンド（必須）:
+- bash scripts/go_live_prep.sh
+
+受け入れ条件:
+- 当日運用者が実行順を迷わない
+- 判定ログが artifacts に残る
+```
+
 ---
 
 ## 3. PRレビュー時のチェックリスト
