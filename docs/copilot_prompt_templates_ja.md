@@ -1459,6 +1459,156 @@ run_complete 契約を運用固定するため、スキーマversionを導入し
 - 判定ログが artifacts に残る
 ```
 
+## 2.59 PR-59: 接続ドリルの本接続モード追加（安全制御付き）
+
+```text
+実運用前判定の信頼性向上のため、接続ドリルに「本接続モード」を追加してください。
+
+対象:
+- scripts/live_connectivity_drill.sh
+- docs/operations.md
+- docs/monitoring.md
+
+必須仕様:
+- 既存の非破壊モードを維持しつつ、環境変数で本接続モードを有効化
+- 本接続モードでは以下を実際のAPI/WSで検証（注文送信はしない）
+  - API認証
+  - ticker / balance / position
+  - stream接続と再接続（最低1回）
+- 本接続モード未有効時に誤接続しない安全ガードを実装
+
+実行コマンド（必須）:
+- bash scripts/live_connectivity_drill.sh
+- LIVE_DRILL_REAL_CONNECT=1 bash scripts/live_connectivity_drill.sh
+
+受け入れ条件:
+- ドリル結果の信頼性が向上
+- 非破壊デフォルトが維持される
+```
+
+## 2.60 PR-60: 注文ライフサイクル方針の設定化（auto-cancel制御）
+
+```text
+現状の `active -> cancelled` 固定遷移を運用方針に合わせるため、auto-cancel挙動を設定化してください。
+
+対象:
+- src/bitcoin_bot/pipeline/live_runner.py
+- src/bitcoin_bot/config/models.py（必要最小限）
+- src/bitcoin_bot/config/validator.py（必要最小限）
+- tests/test_order_lifecycle_runtime.py
+
+必須仕様:
+- `live_order_auto_cancel`（仮名可）で auto-cancel の有効/無効を制御
+- 無効時は `accepted -> active` 追跡までで終了し、監査ログを残す
+- 有効時は従来どおり cancel を実行し、結果を監査ログへ保存
+
+実行コマンド（必須）:
+- pytest -q tests/test_order_lifecycle_runtime.py
+- pytest -q tests/test_audit_log_contract.py
+
+受け入れ条件:
+- 注文遷移が運用ポリシーと一致
+- 監査契約非破壊
+```
+
+## 2.61 PR-61: private API再試行ポリシー（rate_limit/network）
+
+```text
+本番安定性向上のため、private APIの再試行ポリシーを最小実装してください。
+
+対象:
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- src/bitcoin_bot/config/models.py（必要最小限）
+- tests/test_exchange_private_retry_policy.py（新規可）
+
+必須仕様:
+- `rate_limit` / `network` のみ指数バックオフ再試行
+- `auth` / `validation` は fail-fast（再試行しない）
+- 最大試行回数と待機秒を設定化
+
+実行コマンド（必須）:
+- pytest -q tests/test_exchange_private_retry_policy.py
+- pytest -q tests/test_exchange_order_http_runtime.py
+
+受け入れ条件:
+- 一時障害耐性が向上
+- 失敗分類契約（auth/network/rate_limit/exchange）非破壊
+```
+
+## 2.62 PR-62: プレフライトの認証依存チェック統合
+
+```text
+本番直前の手戻り削減のため、go_live_prep に認証依存チェックを統合してください。
+
+対象:
+- scripts/go_live_prep.sh
+- scripts/live_connectivity_drill.sh
+- docs/operations.md
+
+必須仕様:
+- `GO_LIVE_REQUIRE_AUTH=1` のとき、認証未設定を即 No-Go 判定
+- `GO_LIVE_REQUIRE_AUTH=0` のとき、現行の非破壊評価を維持
+- 最終サマリJSONに `require_auth` と `auth_ready` を保存
+
+実行コマンド（必須）:
+- GO_LIVE_REQUIRE_AUTH=0 bash scripts/go_live_prep.sh
+- GO_LIVE_REQUIRE_AUTH=1 bash scripts/go_live_prep.sh
+
+受け入れ条件:
+- 実投入時の判定が明確になる
+- 既存プレフライト契約非破壊
+```
+
+## 2.63 PR-63: 監視アラートの運用検証スクリプト（最小）
+
+```text
+監視運用の実効性確認のため、アラート閾値に対応する最小検証スクリプトを追加してください。
+
+対象:
+- scripts/alerts_sanity_check.sh（新規）
+- docs/monitoring.md
+- docs/operations.md
+
+必須仕様:
+- 以下メトリクスの閾値判定を機械的にチェック
+  - run_loop_failures_total
+  - monitor_status
+- 異常時は原因（metric_missing/threshold_exceeded/endpoint_unreachable）を分類
+- 結果を artifacts に保存
+
+実行コマンド（必須）:
+- bash scripts/alerts_sanity_check.sh
+- curl -fsS http://127.0.0.1:9754/metrics
+
+受け入れ条件:
+- 監視設定の死活を事前検証できる
+- 既存運用手順と矛盾しない
+```
+
+## 2.64 PR-64: 本番投入チェックリスト凍結（運用サインオフ版）
+
+```text
+実運用開始判定を固定するため、チェックリストをサインオフ運用できる形式へ凍結してください。
+
+対象:
+- docs/operations.md
+- docs/release_signoff_template.md（新規）
+- scripts/go_live_prep.sh（必要最小限）
+
+必須仕様:
+- Go/No-Go 判定に必要な実行結果をテンプレートへ自動反映（最低限: 判定/日時/失敗段階）
+- オペレータ署名欄（担当/レビュー/承認）を追加
+- 記録先を `var/artifacts/release_signoff_YYYYMMDD.md` に固定
+
+実行コマンド（必須）:
+- bash scripts/go_live_prep.sh
+- ls -l var/artifacts/release_signoff_*.md
+
+受け入れ条件:
+- 当日判断の監査証跡が残る
+- 既存プレフライト契約非破壊
+```
+
 ---
 
 ## 3. PRレビュー時のチェックリスト
