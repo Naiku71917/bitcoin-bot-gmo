@@ -11,6 +11,9 @@ from bitcoin_bot.utils.io import atomic_dump_json
 from bitcoin_bot.utils.logging import append_audit_event
 
 
+RUN_COMPLETE_SCHEMA_VERSION = "1.0.0"
+
+
 def monitor_status_to_value(status: str) -> int:
     mapping = {
         "active": 1,
@@ -97,6 +100,7 @@ def emit_run_complete(
     pipeline_summary["opt_trials_executed"] = opt_trials_executed
 
     run_complete = {
+        "schema_version": RUN_COMPLETE_SCHEMA_VERSION,
         "run_id": str(uuid.uuid4()),
         "started_at": started_at.isoformat(),
         "completed_at": completed_at.isoformat(),

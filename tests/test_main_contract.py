@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from bitcoin_bot.main import run
+from bitcoin_bot.telemetry.reporters import RUN_COMPLETE_SCHEMA_VERSION
 
 
 def test_main_run_emits_run_complete(tmp_path, capsys):
@@ -40,6 +41,7 @@ paths:
 
     artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
     required_top_level = {
+        "schema_version",
         "run_id",
         "started_at",
         "completed_at",
@@ -49,6 +51,7 @@ paths:
         "notifications",
     }
     assert required_top_level.issubset(artifact.keys())
+    assert artifact["schema_version"] == RUN_COMPLETE_SCHEMA_VERSION
     assert "discord" in artifact["notifications"]
     assert "status" in artifact["notifications"]["discord"]
     assert "reason" in artifact["notifications"]["discord"]
