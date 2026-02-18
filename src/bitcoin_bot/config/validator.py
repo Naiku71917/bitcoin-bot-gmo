@@ -29,6 +29,17 @@ def validate_config(config: RuntimeConfig) -> RuntimeConfig:
             f"Invalid exchange.product_type: {config.exchange.product_type}"
         )
 
+    if not (0.0 < config.risk.position_risk_fraction <= 1.0):
+        raise ValueError(
+            f"Invalid risk.position_risk_fraction: {config.risk.position_risk_fraction}"
+        )
+
+    if config.risk.min_order_qty <= 0.0:
+        raise ValueError(f"Invalid risk.min_order_qty: {config.risk.min_order_qty}")
+
+    if config.risk.qty_step <= 0.0:
+        raise ValueError(f"Invalid risk.qty_step: {config.risk.qty_step}")
+
     config.optimizer.opt_trials = max(1, min(500, config.optimizer.opt_trials))
 
     Path(config.paths.artifacts_dir).mkdir(parents=True, exist_ok=True)

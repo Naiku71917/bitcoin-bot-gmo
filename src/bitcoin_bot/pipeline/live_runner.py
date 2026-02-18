@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import cast
 from typing import Protocol
@@ -21,6 +22,7 @@ from bitcoin_bot.telemetry.reason_codes import (
     REASON_CODE_ORDER_CANCEL_FAILED,
     REASON_CODE_ORDER_FETCH_FAILED,
     REASON_CODE_ORDER_REJECTED,
+    REASON_CODE_ORDER_SIZE_TOO_SMALL,
     REASON_CODE_STREAM_DEGRADED,
     REASON_CODE_STREAM_RECONNECTING,
     normalize_reason_codes,
@@ -35,6 +37,75 @@ class OrderPlacerProtocol(Protocol):
     def fetch_order(self, order_id: str) -> NormalizedOrderState: ...
 
     def cancel_order(self, order_id: str) -> NormalizedOrderState: ...
+
+    def fetch_balances(self, account_type: str): ...
+
+
+def _resolve_available_balance(
+    *,
+    adapter: OrderPlacerProtocol,
+    snapshot: dict[str, float],
+) -> float:
+    override = snapshot.get("available_balance")
+    if isinstance(override, (int, float)):
+        return max(float(override), 0.0)
+
+    fetch_balances = getattr(adapter, "fetch_balances", None)
+    if callable(fetch_balances):
+        balances = fetch_balances("main")
+        if isinstance(balances, list):
+            for row in balances:
+                asset = getattr(row, "asset", None)
+                if asset != "JPY":
+                    continue
+                available = getattr(row, "available", None)
+                total = getattr(row, "total", None)
+                if isinstance(available, (int, float)):
+                    return max(float(available), 0.0)
+                if isinstance(total, (int, float)):
+                    return max(float(total), 0.0)
+
+    return 1_000_000.0
+
+
+def _compute_order_qty(
+    *,
+    available_balance: float,
+    close_price: float,
+    atr_value: float,
+    max_position_size: float,
+    position_risk_fraction: float,
+    min_order_qty: float,
+    qty_step: float,
+) -> tuple[float, dict[str, float]]:
+    close = max(close_price, 1e-9)
+    atr = max(atr_value, 1e-9)
+    risk_budget = available_balance * max(position_risk_fraction, 0.0)
+    qty_by_risk = risk_budget / atr
+
+    max_notional = available_balance * max(max_position_size, 0.0)
+    qty_by_cap = max_notional / close
+
+    raw_qty = min(qty_by_risk, qty_by_cap)
+    safe_step = max(qty_step, 1e-9)
+    rounded_qty = math.floor(raw_qty / safe_step) * safe_step
+    rounded_qty = round(max(rounded_qty, 0.0), 8)
+
+    final_qty = rounded_qty if rounded_qty >= min_order_qty else 0.0
+    sizing = {
+        "available_balance": available_balance,
+        "close": close,
+        "atr": atr,
+        "risk_budget": risk_budget,
+        "qty_by_risk": qty_by_risk,
+        "qty_by_cap": qty_by_cap,
+        "raw_qty": raw_qty,
+        "rounded_qty": rounded_qty,
+        "final_qty": final_qty,
+        "min_order_qty": min_order_qty,
+        "qty_step": safe_step,
+    }
+    return final_qty, sizing
 
 
 def _extract_order_error_info(
@@ -207,6 +278,7 @@ def run_live(
     stream_monitor_status = _probe_stream_monitor_status(adapter)
     order_attempted = False
     order_status = "not_attempted"
+    order_sizing: dict[str, float] = {}
     order_lifecycle_retryable: bool | None = None
     order_lifecycle_transitions: list[str] = []
     if not execute_orders_enabled:
@@ -229,55 +301,87 @@ def run_live(
                 },
             )
         else:
-            order_attempted = True
-            append_audit_event(
-                logs_dir=config.paths.logs_dir,
-                event_type="order_attempt",
-                payload={
-                    "symbol": config.exchange.symbol,
-                    "product_type": config.exchange.product_type,
-                    "execute_orders": execute_orders_enabled,
-                },
-            )
-            order_result = adapter.place_order(
-                NormalizedOrder(
-                    exchange=config.exchange.name,
-                    product_type=cast(ProductType, config.exchange.product_type),
-                    symbol=config.exchange.symbol,
-                    side=decision.action,
-                    order_type="market",
-                    time_in_force="GTC",
-                    qty=0.01,
-                    price=None,
-                    reduce_only=False
-                    if config.exchange.product_type == "leverage"
-                    else None,
-                    client_order_id="live-min-order",
-                )
-            )
-            (
-                order_result,
-                order_lifecycle_reason_codes,
-                order_lifecycle_retryable,
-                order_lifecycle_transitions,
-            ) = _track_order_lifecycle(
+            available_balance = _resolve_available_balance(
                 adapter=adapter,
-                order_state=order_result,
-                logs_dir=config.paths.logs_dir,
+                snapshot=snapshot,
             )
-            stop_reason_codes.extend(order_lifecycle_reason_codes)
-            order_status = order_result.status
-            append_audit_event(
-                logs_dir=config.paths.logs_dir,
-                event_type="order_result",
-                payload={
-                    "symbol": config.exchange.symbol,
-                    "product_type": config.exchange.product_type,
-                    "decision_action": decision.action,
-                    "status": order_status,
-                    "order_id": order_result.order_id,
-                },
+            qty, order_sizing = _compute_order_qty(
+                available_balance=available_balance,
+                close_price=snapshot["close"],
+                atr_value=snapshot["atr"],
+                max_position_size=config.risk.max_position_size,
+                position_risk_fraction=config.risk.position_risk_fraction,
+                min_order_qty=config.risk.min_order_qty,
+                qty_step=config.risk.qty_step,
             )
+            if qty <= 0.0:
+                order_status = "skipped_qty_too_small"
+                stop_reason_codes.append(REASON_CODE_ORDER_SIZE_TOO_SMALL)
+                append_audit_event(
+                    logs_dir=config.paths.logs_dir,
+                    event_type="order_attempt",
+                    payload={
+                        "symbol": config.exchange.symbol,
+                        "product_type": config.exchange.product_type,
+                        "execute_orders": execute_orders_enabled,
+                        "decision_action": decision.action,
+                        "skipped": True,
+                        "skip_reason": REASON_CODE_ORDER_SIZE_TOO_SMALL,
+                        "order_sizing": order_sizing,
+                    },
+                )
+            else:
+                order_attempted = True
+                append_audit_event(
+                    logs_dir=config.paths.logs_dir,
+                    event_type="order_attempt",
+                    payload={
+                        "symbol": config.exchange.symbol,
+                        "product_type": config.exchange.product_type,
+                        "execute_orders": execute_orders_enabled,
+                        "order_sizing": order_sizing,
+                    },
+                )
+                order_result = adapter.place_order(
+                    NormalizedOrder(
+                        exchange=config.exchange.name,
+                        product_type=cast(ProductType, config.exchange.product_type),
+                        symbol=config.exchange.symbol,
+                        side=decision.action,
+                        order_type="market",
+                        time_in_force="GTC",
+                        qty=qty,
+                        price=None,
+                        reduce_only=False
+                        if config.exchange.product_type == "leverage"
+                        else None,
+                        client_order_id="live-min-order",
+                    )
+                )
+                (
+                    order_result,
+                    order_lifecycle_reason_codes,
+                    order_lifecycle_retryable,
+                    order_lifecycle_transitions,
+                ) = _track_order_lifecycle(
+                    adapter=adapter,
+                    order_state=order_result,
+                    logs_dir=config.paths.logs_dir,
+                )
+                stop_reason_codes.extend(order_lifecycle_reason_codes)
+                order_status = order_result.status
+                append_audit_event(
+                    logs_dir=config.paths.logs_dir,
+                    event_type="order_result",
+                    payload={
+                        "symbol": config.exchange.symbol,
+                        "product_type": config.exchange.product_type,
+                        "decision_action": decision.action,
+                        "status": order_status,
+                        "order_id": order_result.order_id,
+                        "order_sizing": order_sizing,
+                    },
+                )
     elif guard_result["status"] == "success":
         order_status = "skipped_by_strategy"
         append_audit_event(
@@ -342,6 +446,7 @@ def run_live(
             "confidence": decision.confidence,
             "order_attempted": order_attempted,
             "order_status": order_status,
+            "order_sizing": order_sizing,
             "order_lifecycle": {
                 "transitions": order_lifecycle_transitions,
                 "retryable": order_lifecycle_retryable,

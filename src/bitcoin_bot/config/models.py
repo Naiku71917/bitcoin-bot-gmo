@@ -51,6 +51,9 @@ class RiskSettings:
     daily_loss_limit: float = 0.05
     max_position_size: float = 0.1
     max_leverage: float = 2.0
+    position_risk_fraction: float = 0.01
+    min_order_qty: float = 0.001
+    qty_step: float = 0.001
 
 
 @dataclass(slots=True)
