@@ -80,3 +80,84 @@ def test_gmo_adapter_mandatory_methods_return_normalized_models():
     assert isinstance(fetched, NormalizedOrderState)
     assert all(isinstance(event, NormalizedOrderEvent) for event in order_events)
     assert all(isinstance(event, NormalizedAccountEvent) for event in account_events)
+
+
+@pytest.mark.parametrize("product_type", ["spot", "leverage"])
+def test_fetch_balances_uses_assets_endpoint(
+    product_type: str,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    adapter = GMOAdapter(product_type=product_type, use_http=True)  # type: ignore[arg-type]
+    captured: dict[str, object] = {}
+
+    def _mock_request_json(*, method, path, params=None, auth=False):
+        captured.update(
+            {
+                "method": method,
+                "path": path,
+                "params": params,
+                "auth": auth,
+            }
+        )
+        return {"data": []}
+
+    monkeypatch.setattr(adapter, "_request_json", _mock_request_json)
+
+    balances = adapter.fetch_balances(account_type="main")
+    assert not isinstance(balances, NormalizedError)
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/private/v1/account/assets"
+    assert captured["auth"] is True
+
+
+@pytest.mark.parametrize("product_type", ["spot", "leverage"])
+def test_fetch_positions_uses_open_positions_endpoint(
+    product_type: str,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    adapter = GMOAdapter(product_type=product_type, use_http=True)  # type: ignore[arg-type]
+    captured: dict[str, object] = {}
+
+    def _mock_request_json(*, method, path, params=None, auth=False):
+        captured.update(
+            {
+                "method": method,
+                "path": path,
+                "params": params,
+                "auth": auth,
+            }
+        )
+        return {"data": []}
+
+    monkeypatch.setattr(adapter, "_request_json", _mock_request_json)
+
+    positions = adapter.fetch_positions(symbol="BTC_JPY")
+    assert isinstance(positions, list)
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/private/v1/openPositions"
+    assert captured["params"] == {"symbol": "BTC_JPY"}
+    assert captured["auth"] is True
+
+
+def test_order_reduce_only_constraint_by_product_type():
+    spot_adapter = GMOAdapter(product_type="spot")
+    leverage_adapter = GMOAdapter(product_type="leverage")
+
+    order_request = NormalizedOrder(
+        exchange="gmo",
+        product_type="leverage",
+        symbol="BTC_JPY",
+        side="buy",
+        order_type="limit",
+        time_in_force="GTC",
+        qty=0.01,
+        price=1000000.0,
+        reduce_only=True,
+        client_order_id="cid-constraint",
+    )
+
+    spot_order = spot_adapter.place_order(order_request)
+    leverage_order = leverage_adapter.place_order(order_request)
+
+    assert spot_order.reduce_only is None
+    assert leverage_order.reduce_only is True
