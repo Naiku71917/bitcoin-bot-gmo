@@ -18,6 +18,9 @@ from bitcoin_bot.strategy.core import DecisionHooks, IndicatorInput, decide_acti
 from bitcoin_bot.telemetry.reason_codes import (
     REASON_CODE_EXECUTE_ORDERS_DISABLED,
     REASON_CODE_LIVE_HTTP_DISABLED,
+    REASON_CODE_ORDER_CANCEL_FAILED,
+    REASON_CODE_ORDER_FETCH_FAILED,
+    REASON_CODE_ORDER_REJECTED,
     REASON_CODE_STREAM_DEGRADED,
     REASON_CODE_STREAM_RECONNECTING,
     normalize_reason_codes,
@@ -28,6 +31,84 @@ from bitcoin_bot.utils.logging import append_audit_event
 
 class OrderPlacerProtocol(Protocol):
     def place_order(self, order_request: NormalizedOrder) -> NormalizedOrderState: ...
+
+    def fetch_order(self, order_id: str) -> NormalizedOrderState: ...
+
+    def cancel_order(self, order_id: str) -> NormalizedOrderState: ...
+
+
+def _extract_order_error_info(
+    order_state: NormalizedOrderState,
+) -> tuple[str | None, bool | None]:
+    error_raw = (
+        order_state.raw.get("error", {}) if isinstance(order_state.raw, dict) else {}
+    )
+    if not isinstance(error_raw, dict):
+        return None, None
+    source_code = error_raw.get("source_code")
+    retryable = error_raw.get("retryable")
+    return (
+        source_code if isinstance(source_code, str) else None,
+        retryable if isinstance(retryable, bool) else None,
+    )
+
+
+def _track_order_lifecycle(
+    *,
+    adapter: OrderPlacerProtocol,
+    order_state: NormalizedOrderState,
+    logs_dir: str,
+) -> tuple[NormalizedOrderState, list[str], bool | None, list[str]]:
+    transitions = [order_state.status]
+    reason_codes: list[str] = []
+    retryable: bool | None = None
+
+    if order_state.status in {"accepted", "active"} and hasattr(adapter, "fetch_order"):
+        fetched = adapter.fetch_order(order_state.order_id)
+        transitions.append(fetched.status)
+        source_code, retryable = _extract_order_error_info(fetched)
+        append_audit_event(
+            logs_dir=logs_dir,
+            event_type="order_fetch_result",
+            payload={
+                "order_id": fetched.order_id,
+                "status": fetched.status,
+                "source_code": source_code,
+                "retryable": retryable,
+            },
+        )
+
+        if fetched.status == "error":
+            reason_codes.append(REASON_CODE_ORDER_FETCH_FAILED)
+            return fetched, reason_codes, retryable, transitions
+
+        order_state = fetched
+
+    if order_state.status == "active" and hasattr(adapter, "cancel_order"):
+        cancelled = adapter.cancel_order(order_state.order_id)
+        transitions.append(cancelled.status)
+        source_code, retryable = _extract_order_error_info(cancelled)
+        append_audit_event(
+            logs_dir=logs_dir,
+            event_type="order_cancel_result",
+            payload={
+                "order_id": cancelled.order_id,
+                "status": cancelled.status,
+                "source_code": source_code,
+                "retryable": retryable,
+            },
+        )
+
+        if cancelled.status == "error":
+            reason_codes.append(REASON_CODE_ORDER_CANCEL_FAILED)
+            return cancelled, reason_codes, retryable, transitions
+
+        order_state = cancelled
+
+    if order_state.status == "rejected":
+        reason_codes.append(REASON_CODE_ORDER_REJECTED)
+
+    return order_state, reason_codes, retryable, transitions
 
 
 def _probe_stream_monitor_status(adapter: Any) -> str:
@@ -126,6 +207,8 @@ def run_live(
     stream_monitor_status = _probe_stream_monitor_status(adapter)
     order_attempted = False
     order_status = "not_attempted"
+    order_lifecycle_retryable: bool | None = None
+    order_lifecycle_transitions: list[str] = []
     if not execute_orders_enabled:
         stop_reason_codes.append(REASON_CODE_EXECUTE_ORDERS_DISABLED)
     elif guard_result["status"] == "success" and decision.action in {"buy", "sell"}:
@@ -172,6 +255,17 @@ def run_live(
                     client_order_id="live-min-order",
                 )
             )
+            (
+                order_result,
+                order_lifecycle_reason_codes,
+                order_lifecycle_retryable,
+                order_lifecycle_transitions,
+            ) = _track_order_lifecycle(
+                adapter=adapter,
+                order_state=order_result,
+                logs_dir=config.paths.logs_dir,
+            )
+            stop_reason_codes.extend(order_lifecycle_reason_codes)
             order_status = order_result.status
             append_audit_event(
                 logs_dir=config.paths.logs_dir,
@@ -248,6 +342,10 @@ def run_live(
             "confidence": decision.confidence,
             "order_attempted": order_attempted,
             "order_status": order_status,
+            "order_lifecycle": {
+                "transitions": order_lifecycle_transitions,
+                "retryable": order_lifecycle_retryable,
+            },
             "reason_codes": reason_codes,
             "stop_reason_codes": stop_reason_codes,
             "risk_guards": guard_result,

@@ -540,6 +540,64 @@ class GMOAdapter(ExchangeProtocol):
         )
 
     def cancel_order(self, order_id: str) -> NormalizedOrderState:
+        if self.use_http:
+            payload = self._request_json(
+                method="POST",
+                path="/private/v1/cancelOrder",
+                body={"orderId": order_id},
+                auth=True,
+            )
+            if isinstance(payload, NormalizedError):
+                return NormalizedOrderState(
+                    order_id=order_id,
+                    status="error",
+                    symbol=None,
+                    side=None,
+                    order_type=None,
+                    qty=None,
+                    price=None,
+                    product_type=self.product_type,
+                    reduce_only=None,
+                    raw={
+                        "exchange": "gmo",
+                        "error": {
+                            "category": payload.category,
+                            "retryable": payload.retryable,
+                            "source_code": payload.source_code,
+                            "message": payload.message,
+                        },
+                    },
+                )
+
+            response_data = payload.get("data", {}) if isinstance(payload, dict) else {}
+            if isinstance(response_data, list):
+                response_data = response_data[0] if response_data else {}
+            if not isinstance(response_data, dict):
+                response_data = {}
+
+            return NormalizedOrderState(
+                order_id=str(response_data.get("orderId") or order_id),
+                status=str(response_data.get("status", "cancelled")),
+                symbol=response_data.get("symbol")
+                if response_data.get("symbol") is not None
+                else None,
+                side=response_data.get("side")
+                if response_data.get("side") is not None
+                else None,
+                order_type=response_data.get("orderType")
+                if response_data.get("orderType") is not None
+                else None,
+                qty=self._to_float(
+                    response_data.get("size") or response_data.get("qty")
+                ),
+                price=self._to_float(response_data.get("price")),
+                product_type=self.product_type,
+                reduce_only=(
+                    bool(response_data.get("settleType")) if self._is_leverage else None
+                ),
+                raw={"exchange": "gmo", "payload": response_data},
+            )
+
         return NormalizedOrderState(
             order_id=order_id,
             status="cancelled",
