@@ -53,6 +53,7 @@ def test_execute_orders_false_does_not_place_order(tmp_path):
 def test_execute_orders_true_places_order_and_records_status(tmp_path):
     config = _build_config(tmp_path)
     config.runtime.execute_orders = True
+    config.runtime.live_http_enabled = True
 
     fake = _FakeExchangeAdapter()
     result = run_live(config, exchange_adapter=fake)
@@ -63,3 +64,21 @@ def test_execute_orders_true_places_order_and_records_status(tmp_path):
     assert summary["order_attempted"] is True
     assert summary["order_status"] == "accepted"
     assert "execute_orders_disabled" not in summary["reason_codes"]
+
+
+def test_execute_orders_true_but_http_disabled_skips_order(tmp_path):
+    config = _build_config(tmp_path)
+    config.runtime.execute_orders = True
+    config.runtime.live_http_enabled = False
+
+    fake = _FakeExchangeAdapter()
+    result = run_live(config, exchange_adapter=fake)
+
+    assert fake.calls == 0
+    summary = result["summary"]
+    assert summary["execute_orders"] is True
+    assert summary["live_http_enabled"] is False
+    assert summary["live_http_active"] is False
+    assert summary["order_attempted"] is False
+    assert summary["order_status"] == "skipped_http_disabled"
+    assert "live_http_disabled" in summary["reason_codes"]

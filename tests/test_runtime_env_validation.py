@@ -31,6 +31,7 @@ def test_execute_orders_true_without_required_env_fails_startup(tmp_path, monkey
 runtime:
   mode: live
   execute_orders: true
+  live_http_enabled: true
 notify:
   discord:
     enabled: false
@@ -89,6 +90,7 @@ def test_execute_orders_true_with_required_env_passes_validation(tmp_path):
 runtime:
   mode: live
   execute_orders: true
+  live_http_enabled: true
 notify:
   discord:
     enabled: false

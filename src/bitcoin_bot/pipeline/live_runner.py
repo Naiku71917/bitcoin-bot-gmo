@@ -17,6 +17,7 @@ from bitcoin_bot.optimizer.gates import evaluate_risk_guards
 from bitcoin_bot.strategy.core import DecisionHooks, IndicatorInput, decide_action
 from bitcoin_bot.telemetry.reason_codes import (
     REASON_CODE_EXECUTE_ORDERS_DISABLED,
+    REASON_CODE_LIVE_HTTP_DISABLED,
     REASON_CODE_STREAM_DEGRADED,
     REASON_CODE_STREAM_RECONNECTING,
     normalize_reason_codes,
@@ -73,6 +74,11 @@ def run_live(
     exchange_adapter: OrderPlacerProtocol | None = None,
 ) -> dict:
     execute_orders_enabled = config.runtime.execute_orders
+    live_http_active = (
+        config.runtime.mode == "live"
+        and execute_orders_enabled
+        and config.runtime.live_http_enabled
+    )
     emit_run_progress(
         artifacts_dir=config.paths.artifacts_dir,
         mode="live",
@@ -115,7 +121,7 @@ def run_live(
     adapter = exchange_adapter or GMOAdapter(
         product_type=cast(ProductType, config.exchange.product_type),
         api_base_url=config.exchange.api_base_url,
-        use_http=False,
+        use_http=live_http_active,
     )
     stream_monitor_status = _probe_stream_monitor_status(adapter)
     order_attempted = False
@@ -123,44 +129,61 @@ def run_live(
     if not execute_orders_enabled:
         stop_reason_codes.append(REASON_CODE_EXECUTE_ORDERS_DISABLED)
     elif guard_result["status"] == "success" and decision.action in {"buy", "sell"}:
-        order_attempted = True
-        append_audit_event(
-            logs_dir=config.paths.logs_dir,
-            event_type="order_attempt",
-            payload={
-                "symbol": config.exchange.symbol,
-                "product_type": config.exchange.product_type,
-                "execute_orders": execute_orders_enabled,
-            },
-        )
-        order_result = adapter.place_order(
-            NormalizedOrder(
-                exchange=config.exchange.name,
-                product_type=cast(ProductType, config.exchange.product_type),
-                symbol=config.exchange.symbol,
-                side=decision.action,
-                order_type="market",
-                time_in_force="GTC",
-                qty=0.01,
-                price=None,
-                reduce_only=False
-                if config.exchange.product_type == "leverage"
-                else None,
-                client_order_id="live-min-order",
+        if not live_http_active:
+            stop_reason_codes.append(REASON_CODE_LIVE_HTTP_DISABLED)
+            order_status = "skipped_http_disabled"
+            append_audit_event(
+                logs_dir=config.paths.logs_dir,
+                event_type="order_attempt",
+                payload={
+                    "symbol": config.exchange.symbol,
+                    "product_type": config.exchange.product_type,
+                    "execute_orders": execute_orders_enabled,
+                    "live_http_enabled": config.runtime.live_http_enabled,
+                    "decision_action": decision.action,
+                    "skipped": True,
+                    "skip_reason": REASON_CODE_LIVE_HTTP_DISABLED,
+                },
             )
-        )
-        order_status = order_result.status
-        append_audit_event(
-            logs_dir=config.paths.logs_dir,
-            event_type="order_result",
-            payload={
-                "symbol": config.exchange.symbol,
-                "product_type": config.exchange.product_type,
-                "decision_action": decision.action,
-                "status": order_status,
-                "order_id": order_result.order_id,
-            },
-        )
+        else:
+            order_attempted = True
+            append_audit_event(
+                logs_dir=config.paths.logs_dir,
+                event_type="order_attempt",
+                payload={
+                    "symbol": config.exchange.symbol,
+                    "product_type": config.exchange.product_type,
+                    "execute_orders": execute_orders_enabled,
+                },
+            )
+            order_result = adapter.place_order(
+                NormalizedOrder(
+                    exchange=config.exchange.name,
+                    product_type=cast(ProductType, config.exchange.product_type),
+                    symbol=config.exchange.symbol,
+                    side=decision.action,
+                    order_type="market",
+                    time_in_force="GTC",
+                    qty=0.01,
+                    price=None,
+                    reduce_only=False
+                    if config.exchange.product_type == "leverage"
+                    else None,
+                    client_order_id="live-min-order",
+                )
+            )
+            order_status = order_result.status
+            append_audit_event(
+                logs_dir=config.paths.logs_dir,
+                event_type="order_result",
+                payload={
+                    "symbol": config.exchange.symbol,
+                    "product_type": config.exchange.product_type,
+                    "decision_action": decision.action,
+                    "status": order_status,
+                    "order_id": order_result.order_id,
+                },
+            )
     elif guard_result["status"] == "success":
         order_status = "skipped_by_strategy"
         append_audit_event(
@@ -219,6 +242,8 @@ def run_live(
             "symbol": config.exchange.symbol,
             "product_type": config.exchange.product_type,
             "execute_orders": execute_orders_enabled,
+            "live_http_enabled": config.runtime.live_http_enabled,
+            "live_http_active": live_http_active,
             "decision_action": decision.action,
             "confidence": decision.confidence,
             "order_attempted": order_attempted,

@@ -19,6 +19,11 @@ def validate_config(config: RuntimeConfig) -> RuntimeConfig:
             f"Invalid runtime.execute_orders: {config.runtime.execute_orders}"
         )
 
+    if not isinstance(config.runtime.live_http_enabled, bool):
+        raise ValueError(
+            f"Invalid runtime.live_http_enabled: {config.runtime.live_http_enabled}"
+        )
+
     if config.exchange.product_type not in ALLOWED_PRODUCT_TYPES:
         raise ValueError(
             f"Invalid exchange.product_type: {config.exchange.product_type}"
@@ -40,7 +45,11 @@ def validate_runtime_environment(
     fatal_errors: list[str] = []
     warnings: list[str] = []
 
-    if config.runtime.mode == "live" and config.runtime.execute_orders:
+    if (
+        config.runtime.mode == "live"
+        and config.runtime.execute_orders
+        and config.runtime.live_http_enabled
+    ):
         required_envs = ["GMO_API_KEY", "GMO_API_SECRET"]
         missing = [name for name in required_envs if not env.get(name)]
         if missing:

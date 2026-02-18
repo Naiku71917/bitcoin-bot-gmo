@@ -30,6 +30,7 @@ class _FakeExchangeAdapter:
 def _config(tmp_path) -> RuntimeConfig:
     config = RuntimeConfig()
     config.runtime.execute_orders = True
+    config.runtime.live_http_enabled = True
     config.paths.artifacts_dir = str(tmp_path / "artifacts")
     config.paths.logs_dir = str(tmp_path / "logs")
     config.paths.cache_dir = str(tmp_path / "cache")

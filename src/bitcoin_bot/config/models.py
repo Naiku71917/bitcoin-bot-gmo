@@ -14,6 +14,7 @@ class RuntimeSettings:
     profile: str = "default"
     interval_seconds: int = 300
     execute_orders: bool = False
+    live_http_enabled: bool = False
 
 
 @dataclass(slots=True)
