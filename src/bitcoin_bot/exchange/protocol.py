@@ -2,10 +2,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterator, Literal, Protocol, runtime_checkable
+from typing import (
+    Any,
+    Generic,
+    Iterable,
+    Iterator,
+    Literal,
+    Protocol,
+    TypeVar,
+    runtime_checkable,
+)
 
 
 ProductType = Literal["spot", "leverage"]
+TReadModel = TypeVar("TReadModel")
 
 
 @dataclass(slots=True)
@@ -38,6 +48,25 @@ class NormalizedError:
     retryable: bool
     source_code: str | None
     message: str
+
+
+@dataclass(slots=True)
+class ReadFailureInfo:
+    category: Literal["auth", "rate_limit", "validation", "network", "exchange"]
+    retryable: bool
+    source_code: str | None
+    message: str
+
+
+class ErrorAwareList(Generic[TReadModel], list[TReadModel]):
+    def __init__(
+        self,
+        items: Iterable[TReadModel] | None = None,
+        *,
+        error: ReadFailureInfo | None = None,
+    ) -> None:
+        super().__init__(items or [])
+        self.error = error
 
 
 @dataclass(slots=True)
@@ -131,7 +160,7 @@ class ExchangeProtocol(Protocol):
         start: datetime,
         end: datetime,
         limit: int,
-    ) -> list[NormalizedKline]: ...
+    ) -> ErrorAwareList[NormalizedKline]: ...
 
     def fetch_ticker(self, symbol: str) -> NormalizedTicker | NormalizedError: ...
 
@@ -139,7 +168,7 @@ class ExchangeProtocol(Protocol):
         self, account_type: str
     ) -> list[NormalizedBalance] | NormalizedError: ...
 
-    def fetch_positions(self, symbol: str) -> list[NormalizedPosition]: ...
+    def fetch_positions(self, symbol: str) -> ErrorAwareList[NormalizedPosition]: ...
 
     def place_order(self, order_request: NormalizedOrder) -> NormalizedOrderState: ...
 

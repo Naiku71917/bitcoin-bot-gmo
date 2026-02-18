@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from bitcoin_bot.exchange.protocol import (
+    ErrorAwareList,
     NormalizedAccountEvent,
     ExchangeProtocol,
     NormalizedBalance,
@@ -24,6 +25,7 @@ from bitcoin_bot.exchange.protocol import (
     NormalizedPosition,
     NormalizedTicker,
     ProductType,
+    ReadFailureInfo,
 )
 
 
@@ -158,6 +160,14 @@ class GMOAdapter(ExchangeProtocol):
                 )
                 return
 
+    def _failure_info_from_error(self, error: NormalizedError) -> ReadFailureInfo:
+        return ReadFailureInfo(
+            category=error.category,
+            retryable=error.retryable,
+            source_code=error.source_code,
+            message=error.message,
+        )
+
     def _parse_order_event(self, payload: dict) -> NormalizedOrderEvent:
         return NormalizedOrderEvent(
             order_id=str(payload.get("order_id", "")),
@@ -241,7 +251,7 @@ class GMOAdapter(ExchangeProtocol):
         start: datetime,
         end: datetime,
         limit: int,
-    ) -> list[NormalizedKline]:
+    ) -> ErrorAwareList[NormalizedKline]:
         if self.use_http:
             payload = self._request_json(
                 method="GET",
@@ -253,11 +263,18 @@ class GMOAdapter(ExchangeProtocol):
                 },
             )
             if isinstance(payload, NormalizedError):
-                return []
+                return ErrorAwareList(error=self._failure_info_from_error(payload))
 
             klines_raw = payload.get("data", [])
             if not isinstance(klines_raw, list):
-                return []
+                return ErrorAwareList(
+                    error=ReadFailureInfo(
+                        category="validation",
+                        retryable=False,
+                        source_code="INVALID_RESPONSE",
+                        message="klines_data_is_not_list",
+                    )
+                )
 
             normalized: list[NormalizedKline] = []
             for row in klines_raw:
@@ -288,8 +305,8 @@ class GMOAdapter(ExchangeProtocol):
                         volume=volume,
                     )
                 )
-            return normalized
-        return []
+            return ErrorAwareList(normalized)
+        return ErrorAwareList()
 
     def fetch_ticker(self, symbol: str) -> NormalizedTicker | NormalizedError:
         if self.use_http:
@@ -366,7 +383,7 @@ class GMOAdapter(ExchangeProtocol):
             )
         ]
 
-    def fetch_positions(self, symbol: str) -> list[NormalizedPosition]:
+    def fetch_positions(self, symbol: str) -> ErrorAwareList[NormalizedPosition]:
         if self.use_http:
             payload = self._request_json(
                 method="GET",
@@ -375,11 +392,18 @@ class GMOAdapter(ExchangeProtocol):
                 auth=True,
             )
             if isinstance(payload, NormalizedError):
-                return []
+                return ErrorAwareList(error=self._failure_info_from_error(payload))
 
             positions_raw = payload.get("data", [])
             if not isinstance(positions_raw, list):
-                return []
+                return ErrorAwareList(
+                    error=ReadFailureInfo(
+                        category="validation",
+                        retryable=False,
+                        source_code="INVALID_RESPONSE",
+                        message="positions_data_is_not_list",
+                    )
+                )
 
             normalized: list[NormalizedPosition] = []
             for row in positions_raw:
@@ -401,8 +425,8 @@ class GMOAdapter(ExchangeProtocol):
                         product_type=self.product_type,
                     )
                 )
-            return normalized
-        return []
+            return ErrorAwareList(normalized)
+        return ErrorAwareList()
 
     def place_order(self, order_request: NormalizedOrder) -> NormalizedOrderState:
         reduce_only = order_request.reduce_only if self._is_leverage else None
