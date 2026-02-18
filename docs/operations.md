@@ -57,8 +57,26 @@ bash scripts/release_check.sh
 - `release_check.sh` は以下を順に実行し、失敗した段階名を出力して非0終了します。
 	- pre-commit
 	- pytest（quick）
+	- pytest（live failover）
 	- pytest（coverage）
 	- smoke_live_daemon
+
+## Go/No-Go 自動ゲート
+
+```bash
+bash scripts/go_nogo_gate.sh
+```
+
+- 実行順序:
+	- release_check
+	- replay_check
+	- smoke 反復（既定: `SMOKE_REPEAT_COUNT=3`）
+	- bot再起動（health/metrics確認用）
+	- health / metrics 確認
+- 判定は1行で出力されます。
+	- 成功: `[go-nogo] DECISION: GO`
+	- 失敗: `[go-nogo] DECISION: NO-GO stage=<stage> ...`
+- 判定根拠ログは `var/artifacts/go_nogo_gate.log` に保存されます。
 
 ## 本番移行 Go/No-Go 判定
 
