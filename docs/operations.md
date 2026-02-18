@@ -95,6 +95,27 @@ bash scripts/go_nogo_gate.sh
 	- 失敗: `[go-nogo] DECISION: NO-GO stage=<stage> ...`
 - 判定根拠ログは `var/artifacts/go_nogo_gate.log` に保存されます。
 
+## 最終プレフライト（本番直前）
+
+```bash
+bash scripts/go_live_prep.sh
+```
+
+- 実行順序（固定）:
+	- `go_nogo_gate`
+	- `soak_24h_gate`（短縮設定可）
+	- `monthly_report`
+	- `live_connectivity_drill`
+- 短縮設定の例:
+	- `GO_LIVE_SOAK_TOTAL_ITERATIONS=2`
+	- `GO_LIVE_SOAK_INTERVAL_SECONDS=1`
+- 判定ログ:
+	- `var/artifacts/go_live_prep.log`
+	- `var/artifacts/go_live_prep_summary.json`
+- 最終判定は1行出力されます。
+	- 成功: `[go-live-prep] DECISION: GO`
+	- 失敗: `[go-live-prep] DECISION: NO-GO stage=<stage> ...`
+
 ## 本番移行 Go/No-Go 判定
 
 当日判定は以下を上から順に確認し、1つでも未達なら No-Go。
