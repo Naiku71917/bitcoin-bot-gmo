@@ -97,23 +97,30 @@ def load_ohlcv_for_backtest(
     timeframe: str,
     provider: str = "csv",
     missing_policy: MissingPolicy = "drop",
+    backtest_data_quality_mode: Literal["strict", "fallback"] = "fallback",
 ) -> tuple[pd.DataFrame, str, str | None]:
-    path = Path(csv_path)
-    if not path.exists():
+    if backtest_data_quality_mode not in {"strict", "fallback"}:
+        raise ValueError(
+            f"Unsupported backtest_data_quality_mode: {backtest_data_quality_mode}"
+        )
+
+    def _strict_or_fallback(reason: str) -> tuple[pd.DataFrame, str, str | None]:
+        if backtest_data_quality_mode == "strict":
+            raise ValueError(f"backtest_data_quality_error:{reason}")
         return (
             _synthetic_ohlcv(symbol=symbol, timeframe=timeframe),
             "synthetic_fallback",
-            "csv_not_found",
+            reason,
         )
+
+    path = Path(csv_path)
+    if not path.exists():
+        return _strict_or_fallback("csv_not_found")
 
     try:
         csv_frame = pd.read_csv(path)
     except Exception:
-        return (
-            _synthetic_ohlcv(symbol=symbol, timeframe=timeframe),
-            "synthetic_fallback",
-            "csv_read_error",
-        )
+        return _strict_or_fallback("csv_read_error")
 
     rows = csv_frame.to_dict("records")
     frame = normalize_ohlcv(
@@ -125,10 +132,6 @@ def load_ohlcv_for_backtest(
     )
 
     if len(frame) < 2:
-        return (
-            _synthetic_ohlcv(symbol=symbol, timeframe=timeframe),
-            "synthetic_fallback",
-            "insufficient_rows",
-        )
+        return _strict_or_fallback("insufficient_rows")
 
     return frame, "csv", None

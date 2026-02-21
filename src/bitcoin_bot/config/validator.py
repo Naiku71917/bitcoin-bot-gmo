@@ -8,6 +8,7 @@ from bitcoin_bot.config.models import RuntimeConfig
 
 ALLOWED_MODES = {"backtest", "paper", "live"}
 ALLOWED_PRODUCT_TYPES = {"spot", "leverage"}
+ALLOWED_BACKTEST_DATA_QUALITY_MODES = {"strict", "fallback"}
 
 
 def validate_config(config: RuntimeConfig) -> RuntimeConfig:
@@ -45,6 +46,15 @@ def validate_config(config: RuntimeConfig) -> RuntimeConfig:
         raise ValueError(
             "Invalid exchange.private_retry_base_delay_seconds: "
             f"{config.exchange.private_retry_base_delay_seconds}"
+        )
+
+    if (
+        config.data.backtest_data_quality_mode
+        not in ALLOWED_BACKTEST_DATA_QUALITY_MODES
+    ):
+        raise ValueError(
+            "Invalid data.backtest_data_quality_mode: "
+            f"{config.data.backtest_data_quality_mode}"
         )
 
     if not (0.0 < config.risk.position_risk_fraction <= 1.0):

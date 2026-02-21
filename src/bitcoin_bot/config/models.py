@@ -34,6 +34,7 @@ class DataSettings:
     timeframe: str = "1m"
     source_priority: list[str] = field(default_factory=lambda: ["api", "csv"])
     csv_path: str = "./data/sample_klines.csv"
+    backtest_data_quality_mode: Literal["strict", "fallback"] = "fallback"
 
 
 @dataclass(slots=True)

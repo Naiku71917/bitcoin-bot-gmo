@@ -24,6 +24,7 @@ def run_backtest(config: RuntimeConfig) -> dict:
         csv_path=config.data.csv_path,
         symbol=config.exchange.symbol,
         timeframe=config.data.timeframe,
+        backtest_data_quality_mode=config.data.backtest_data_quality_mode,
     )
 
     closes = frame["close"].astype(float)
