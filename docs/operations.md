@@ -271,6 +271,19 @@ docker-compose --profile monitoring up -d
 - `monitor_status{status="degraded"}` が 2分以上継続
 - `monitor_status{status="reconnecting"}` が 5分以上継続
 
+### アラート閾値の事前検証（最小）
+
+```bash
+bash scripts/alerts_sanity_check.sh
+```
+
+- `run_loop_failures_total` と `monitor_status` を閾値で機械判定します。
+- 成果物は `var/artifacts/alerts_sanity_check.json` に保存されます。
+- 異常時は原因分類を出力します。
+	- `metric_missing`
+	- `threshold_exceeded`
+	- `endpoint_unreachable`
+
 ## 一次切り分け（短縮版）
 
 - Logs:

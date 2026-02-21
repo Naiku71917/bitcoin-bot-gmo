@@ -49,6 +49,23 @@ docker-compose --profile monitoring up -d
 - `monitor_status{status="degraded"} == 0` が2分継続
 - `monitor_status{status="reconnecting"} == 2` が5分継続
 
+## 閾値サニティチェック（最小）
+
+```bash
+bash scripts/alerts_sanity_check.sh
+```
+
+- 判定対象:
+   - `run_loop_failures_total`
+   - `monitor_status{status="degraded"}`
+   - `monitor_status{status="reconnecting"}`
+- 主な環境変数:
+   - `ALERTS_RUN_LOOP_FAILURES_THRESHOLD`（既定: `3`）
+   - `ALERTS_MONITOR_DEGRADED_THRESHOLD`（既定: `0`）
+   - `ALERTS_MONITOR_RECONNECTING_THRESHOLD`（既定: `2`）
+   - `ALERTS_METRICS_URL`（既定: `http://127.0.0.1:9754/metrics`）
+- 成果物: `var/artifacts/alerts_sanity_check.json`
+
 ## 障害時の即応メモ
 
 - `monitor_status=0`（degraded）なら Runbook の No-Go 判定を優先
