@@ -239,6 +239,8 @@ def _default_risk_snapshot() -> dict[str, float]:
         "ema_slow": 100.0,
         "rsi": 50.0,
         "atr": 1.0,
+        "volume": 100.0,
+        "volume_ma": 100.0,
     }
 
 
@@ -289,8 +291,14 @@ def run_live(
             ema_slow=snapshot["ema_slow"],
             rsi=snapshot["rsi"],
             atr=max(snapshot["atr"], 1e-9),
+            volume=max(snapshot["volume"], 0.0),
+            volume_ma=max(snapshot["volume_ma"], 1e-9),
         ),
-        hooks=DecisionHooks(min_confidence=config.strategy.min_confidence),
+        hooks=DecisionHooks(
+            min_confidence=config.strategy.min_confidence,
+            regime_max_atr_to_price_ratio=config.strategy.regime_max_atr_to_price_ratio,
+            regime_min_volume_ratio=config.strategy.regime_min_volume_ratio,
+        ),
     )
     adapter = exchange_adapter or GMOAdapter(
         product_type=cast(ProductType, config.exchange.product_type),

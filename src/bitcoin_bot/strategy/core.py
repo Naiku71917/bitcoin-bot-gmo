@@ -10,6 +10,8 @@ from bitcoin_bot.telemetry.reason_codes import (
     REASON_CODE_EMA_MOMENTUM_SHORT,
     REASON_CODE_FORCED_HOLD,
     REASON_CODE_NO_TRADE_SETUP,
+    REASON_CODE_REGIME_THIN_LIQUIDITY,
+    REASON_CODE_REGIME_VOLATILITY_SPIKE,
 )
 
 
@@ -30,6 +32,8 @@ class IndicatorInput:
     ema_slow: float
     rsi: float
     atr: float
+    volume: float = 100.0
+    volume_ma: float = 100.0
 
 
 @dataclass(slots=True)
@@ -37,6 +41,8 @@ class DecisionHooks:
     min_confidence: float = 0.55
     cooldown_bars_remaining: int = 0
     max_holding_bars: int = 12
+    regime_max_atr_to_price_ratio: float = 0.15
+    regime_min_volume_ratio: float = 0.3
 
 
 @dataclass(slots=True)
@@ -125,6 +131,26 @@ def decide_action(
             reason_codes=[*reason_codes, REASON_CODE_BELOW_MIN_CONFIDENCE],
             risk=_build_risk("hold", indicators, applied_hooks.max_holding_bars),
         )
+
+    if action != "hold":
+        atr_to_price_ratio = abs(indicators.atr) / max(abs(indicators.close), 1e-9)
+        volume_ratio = indicators.volume / max(indicators.volume_ma, 1e-9)
+
+        if atr_to_price_ratio > applied_hooks.regime_max_atr_to_price_ratio:
+            return StrategyDecision(
+                action="hold",
+                confidence=confidence,
+                reason_codes=[*reason_codes, REASON_CODE_REGIME_VOLATILITY_SPIKE],
+                risk=_build_risk("hold", indicators, applied_hooks.max_holding_bars),
+            )
+
+        if volume_ratio < applied_hooks.regime_min_volume_ratio:
+            return StrategyDecision(
+                action="hold",
+                confidence=confidence,
+                reason_codes=[*reason_codes, REASON_CODE_REGIME_THIN_LIQUIDITY],
+                risk=_build_risk("hold", indicators, applied_hooks.max_holding_bars),
+            )
 
     return StrategyDecision(
         action=action,

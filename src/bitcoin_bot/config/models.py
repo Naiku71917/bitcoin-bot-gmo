@@ -44,6 +44,8 @@ class StrategySettings:
     ema_slow: int = 26
     rsi_period: int = 14
     atr_period: int = 14
+    regime_max_atr_to_price_ratio: float = 0.15
+    regime_min_volume_ratio: float = 0.3
     feature_flags: dict[str, bool] = field(
         default_factory=lambda: {"slope_norm": True, "gap_norm": True}
     )

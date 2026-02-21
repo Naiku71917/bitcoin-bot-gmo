@@ -72,3 +72,35 @@ def test_hold_decision_by_hooks():
     )
     assert min_confidence_decision.action == "hold"
     assert "below_min_confidence" in min_confidence_decision.reason_codes
+
+
+def test_regime_filters_force_hold_with_reason_codes():
+    volatility_spike = decide_action(
+        IndicatorInput(
+            close=100.0,
+            ema_fast=110.0,
+            ema_slow=100.0,
+            rsi=55.0,
+            atr=20.0,
+            volume=100.0,
+            volume_ma=100.0,
+        ),
+        hooks=DecisionHooks(min_confidence=0.0),
+    )
+    assert volatility_spike.action == "hold"
+    assert "regime_volatility_spike" in volatility_spike.reason_codes
+
+    thin_liquidity = decide_action(
+        IndicatorInput(
+            close=100.0,
+            ema_fast=110.0,
+            ema_slow=100.0,
+            rsi=55.0,
+            atr=1.0,
+            volume=10.0,
+            volume_ma=100.0,
+        ),
+        hooks=DecisionHooks(min_confidence=0.0),
+    )
+    assert thin_liquidity.action == "hold"
+    assert "regime_thin_liquidity" in thin_liquidity.reason_codes

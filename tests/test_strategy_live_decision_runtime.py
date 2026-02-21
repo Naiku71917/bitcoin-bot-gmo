@@ -107,3 +107,53 @@ def test_live_decision_sell_boundary_places_order(tmp_path):
     assert summary["order_status"] == "accepted"
     assert "ema_momentum_short" in summary["reason_codes"]
     assert fake.calls == 1
+
+
+def test_live_regime_filter_volatility_spike_suppresses_order(tmp_path):
+    config = _config(tmp_path)
+    fake = _FakeExchangeAdapter()
+
+    pipeline = run_live(
+        config,
+        risk_snapshot={
+            "close": 100.0,
+            "ema_fast": 120.0,
+            "ema_slow": 100.0,
+            "rsi": 50.0,
+            "atr": 20.0,
+            "volume": 100.0,
+            "volume_ma": 100.0,
+        },
+        exchange_adapter=fake,
+    )
+
+    summary = pipeline["summary"]
+    assert summary["decision_action"] == "hold"
+    assert summary["order_attempted"] is False
+    assert "regime_volatility_spike" in summary["reason_codes"]
+    assert fake.calls == 0
+
+
+def test_live_regime_filter_thin_liquidity_suppresses_order(tmp_path):
+    config = _config(tmp_path)
+    fake = _FakeExchangeAdapter()
+
+    pipeline = run_live(
+        config,
+        risk_snapshot={
+            "close": 100.0,
+            "ema_fast": 110.0,
+            "ema_slow": 100.0,
+            "rsi": 50.0,
+            "atr": 1.0,
+            "volume": 10.0,
+            "volume_ma": 100.0,
+        },
+        exchange_adapter=fake,
+    )
+
+    summary = pipeline["summary"]
+    assert summary["decision_action"] == "hold"
+    assert summary["order_attempted"] is False
+    assert "regime_thin_liquidity" in summary["reason_codes"]
+    assert fake.calls == 0

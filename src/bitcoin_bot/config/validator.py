@@ -48,6 +48,18 @@ def validate_config(config: RuntimeConfig) -> RuntimeConfig:
             f"{config.exchange.private_retry_base_delay_seconds}"
         )
 
+    if not (0.0 < config.strategy.regime_max_atr_to_price_ratio <= 1.0):
+        raise ValueError(
+            "Invalid strategy.regime_max_atr_to_price_ratio: "
+            f"{config.strategy.regime_max_atr_to_price_ratio}"
+        )
+
+    if not (0.0 <= config.strategy.regime_min_volume_ratio <= 1.0):
+        raise ValueError(
+            "Invalid strategy.regime_min_volume_ratio: "
+            f"{config.strategy.regime_min_volume_ratio}"
+        )
+
     if (
         config.data.backtest_data_quality_mode
         not in ALLOWED_BACKTEST_DATA_QUALITY_MODES
