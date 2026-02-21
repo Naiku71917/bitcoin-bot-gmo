@@ -4,12 +4,16 @@ import hashlib
 import hmac
 import json
 import os
+import base64
+import secrets
+import socket
+import ssl
 from dataclasses import dataclass
 from datetime import datetime
 from time import sleep, time
 from typing import Callable, Iterator, TypeVar
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from bitcoin_bot.exchange.protocol import (
@@ -36,6 +40,7 @@ TStreamEvent = TypeVar("TStreamEvent")
 class GMOAdapter(ExchangeProtocol):
     product_type: ProductType
     api_base_url: str = "https://api.coin.z.com"
+    ws_url: str = "wss://api.coin.z.com/ws"
     use_http: bool = False
     timeout_seconds: float = 5.0
     private_retry_max_attempts: int = 3
@@ -218,6 +223,220 @@ class GMOAdapter(ExchangeProtocol):
                 if reconnect_attempts > 1:
                     return
             except Exception as exc:  # pragma: no cover - defensive fallback
+                yield self.normalize_error(
+                    source_code="EXCHANGE_ERROR",
+                    message=str(exc),
+                )
+                return
+
+    def _ws_connect_socket(self) -> socket.socket:
+        parsed = urlparse(self.ws_url)
+        if parsed.scheme not in {"ws", "wss"}:
+            raise ConnectionError("invalid_ws_scheme")
+
+        host = parsed.hostname
+        if host is None:
+            raise ConnectionError("invalid_ws_host")
+        port = parsed.port or (443 if parsed.scheme == "wss" else 80)
+
+        sock = socket.create_connection((host, port), timeout=self.timeout_seconds)
+        sock.settimeout(self.timeout_seconds)
+        if parsed.scheme == "wss":
+            context = ssl.create_default_context()
+            wrapped = context.wrap_socket(sock, server_hostname=host)
+            wrapped.settimeout(self.timeout_seconds)
+            return wrapped
+        return sock
+
+    def _ws_handshake(self, ws_sock: socket.socket) -> None:
+        parsed = urlparse(self.ws_url)
+        host = parsed.hostname
+        if host is None:
+            raise ConnectionError("invalid_ws_host")
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+
+        sec_key = secrets.token_bytes(16)
+        sec_key_b64 = base64.b64encode(sec_key).decode("ascii")
+
+        request = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {sec_key_b64}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        )
+        ws_sock.sendall(request.encode("utf-8"))
+        response = ws_sock.recv(4096).decode("utf-8", errors="ignore")
+        if " 101 " not in response:
+            raise ConnectionError("ws_handshake_not_101")
+
+    def _encode_ws_text_frame(self, text: str) -> bytes:
+        payload = text.encode("utf-8")
+        payload_len = len(payload)
+
+        first = 0x81
+        mask_bit = 0x80
+        if payload_len < 126:
+            header = bytes([first, mask_bit | payload_len])
+        elif payload_len < (1 << 16):
+            header = bytes([first, mask_bit | 126]) + payload_len.to_bytes(2, "big")
+        else:
+            header = bytes([first, mask_bit | 127]) + payload_len.to_bytes(8, "big")
+
+        mask_key = secrets.token_bytes(4)
+        masked = bytes(byte ^ mask_key[index % 4] for index, byte in enumerate(payload))
+        return header + mask_key + masked
+
+    def _recv_exact(self, ws_sock: socket.socket, length: int) -> bytes:
+        data = bytearray()
+        while len(data) < length:
+            chunk = ws_sock.recv(length - len(data))
+            if not chunk:
+                raise ConnectionError("ws_connection_closed")
+            data.extend(chunk)
+        return bytes(data)
+
+    def _recv_ws_text(self, ws_sock: socket.socket) -> str:
+        first_two = self._recv_exact(ws_sock, 2)
+        opcode = first_two[0] & 0x0F
+        masked = (first_two[1] & 0x80) != 0
+        length = first_two[1] & 0x7F
+
+        if length == 126:
+            length = int.from_bytes(self._recv_exact(ws_sock, 2), "big")
+        elif length == 127:
+            length = int.from_bytes(self._recv_exact(ws_sock, 8), "big")
+
+        mask_key = self._recv_exact(ws_sock, 4) if masked else b""
+        payload = self._recv_exact(ws_sock, length)
+        if masked:
+            payload = bytes(
+                byte ^ mask_key[index % 4] for index, byte in enumerate(payload)
+            )
+
+        if opcode == 0x8:
+            raise ConnectionError("ws_closed")
+        if opcode == 0x9:
+            pong = bytes([0x8A, 0x00])
+            ws_sock.sendall(pong)
+            return ""
+        if opcode != 0x1:
+            return ""
+
+        return payload.decode("utf-8", errors="ignore")
+
+    def _build_ws_subscribe_payload(
+        self,
+        *,
+        channel: str,
+        auth_required: bool,
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {"command": "subscribe", "channel": channel}
+        if auth_required:
+            api_key = os.getenv("GMO_API_KEY")
+            api_secret = os.getenv("GMO_API_SECRET")
+            if not api_key or not api_secret:
+                raise PermissionError("missing_gmo_api_credentials")
+            timestamp = str(int(time() * 1000))
+            sign_text = f"{timestamp}GET/ws"
+            signature = hmac.new(
+                api_secret.encode("utf-8"),
+                sign_text.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            payload.update(
+                {
+                    "apiKey": api_key,
+                    "timestamp": timestamp,
+                    "signature": signature,
+                }
+            )
+        return payload
+
+    def _open_ws_stream(
+        self,
+        *,
+        channel: str,
+        auth_required: bool,
+    ) -> Iterator[dict]:
+        ws_sock = self._ws_connect_socket()
+        try:
+            self._ws_handshake(ws_sock)
+            subscribe_payload = self._build_ws_subscribe_payload(
+                channel=channel,
+                auth_required=auth_required,
+            )
+            ws_sock.sendall(
+                self._encode_ws_text_frame(
+                    json.dumps(
+                        subscribe_payload, ensure_ascii=False, separators=(",", ":")
+                    )
+                )
+            )
+
+            while True:
+                message = self._recv_ws_text(ws_sock)
+                if not message:
+                    continue
+                parsed = json.loads(message)
+                if isinstance(parsed, dict):
+                    yield parsed
+        finally:
+            try:
+                ws_sock.close()
+            except OSError:
+                pass
+
+    def _iter_ws_stream(
+        self,
+        *,
+        channel: str,
+        auth_required: bool,
+        parser: Callable[[dict], TStreamEvent],
+    ) -> Iterator[TStreamEvent | NormalizedError]:
+        if auth_required and (
+            not os.getenv("GMO_API_KEY") or not os.getenv("GMO_API_SECRET")
+        ):
+            yield self.normalize_error(
+                source_code="AUTH_FAILED",
+                message="missing_gmo_api_credentials",
+            )
+            return
+
+        reconnect_attempts = 0
+        while True:
+            try:
+                for payload in self._open_ws_stream(
+                    channel=channel,
+                    auth_required=auth_required,
+                ):
+                    yield parser(payload)
+                return
+            except PermissionError as exc:
+                yield self.normalize_error(
+                    source_code="AUTH_FAILED",
+                    message=str(exc),
+                )
+                return
+            except (
+                URLError,
+                ConnectionError,
+                TimeoutError,
+                OSError,
+                ssl.SSLError,
+            ) as exc:
+                yield self.normalize_error(
+                    source_code="NETWORK_TIMEOUT",
+                    message=str(exc),
+                )
+                reconnect_attempts += 1
+                if reconnect_attempts > 1:
+                    return
+            except Exception as exc:  # pragma: no cover - defensive
                 yield self.normalize_error(
                     source_code="EXCHANGE_ERROR",
                     message=str(exc),
@@ -715,6 +934,12 @@ class GMOAdapter(ExchangeProtocol):
         )
 
     def stream_order_events(self) -> Iterator[NormalizedOrderEvent | NormalizedError]:
+        if self.order_stream_source_factory is None and self.use_http:
+            return self._iter_ws_stream(
+                channel="orderEvents",
+                auth_required=True,
+                parser=self._parse_order_event,
+            )
         return self._iter_with_reconnect(
             factory=self.order_stream_source_factory,
             parser=self._parse_order_event,
@@ -723,6 +948,12 @@ class GMOAdapter(ExchangeProtocol):
     def stream_account_events(
         self,
     ) -> Iterator[NormalizedAccountEvent | NormalizedError]:
+        if self.account_stream_source_factory is None and self.use_http:
+            return self._iter_ws_stream(
+                channel="executionEvents",
+                auth_required=True,
+                parser=self._parse_account_event,
+            )
         return self._iter_with_reconnect(
             factory=self.account_stream_source_factory,
             parser=self._parse_account_event,

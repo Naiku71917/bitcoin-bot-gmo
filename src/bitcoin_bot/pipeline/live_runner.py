@@ -287,6 +287,7 @@ def run_live(
     adapter = exchange_adapter or GMOAdapter(
         product_type=cast(ProductType, config.exchange.product_type),
         api_base_url=config.exchange.api_base_url,
+        ws_url=config.exchange.ws_url,
         use_http=live_http_active,
         private_retry_max_attempts=config.exchange.private_retry_max_attempts,
         private_retry_base_delay_seconds=config.exchange.private_retry_base_delay_seconds,
