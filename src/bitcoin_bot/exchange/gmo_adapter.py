@@ -500,6 +500,7 @@ class GMOAdapter(ExchangeProtocol):
             "INVALID_PARAM",
             "BAD_REQUEST",
             "INSUFFICIENT_MARGIN",
+            "INVALID_RESPONSE",
         }:
             return NormalizedError(
                 category="validation",
@@ -874,6 +875,36 @@ class GMOAdapter(ExchangeProtocol):
         )
 
     def fetch_order(self, order_id: str) -> NormalizedOrderState:
+        def _order_error_state(
+            *,
+            source_code: str,
+            message: str,
+        ) -> NormalizedOrderState:
+            normalized_error = self.normalize_error(
+                source_code=source_code,
+                message=message,
+            )
+            return NormalizedOrderState(
+                order_id=order_id,
+                status="error",
+                symbol=None,
+                side=None,
+                order_type=None,
+                qty=None,
+                price=None,
+                product_type=self.product_type,
+                reduce_only=None,
+                raw={
+                    "exchange": "gmo",
+                    "error": {
+                        "category": normalized_error.category,
+                        "retryable": normalized_error.retryable,
+                        "source_code": normalized_error.source_code,
+                        "message": normalized_error.message,
+                    },
+                },
+            )
+
         if self.use_http:
             payload = self._request_json_private_with_retry(
                 method="GET",
@@ -881,32 +912,36 @@ class GMOAdapter(ExchangeProtocol):
                 params={"orderId": order_id},
             )
             if isinstance(payload, NormalizedError):
-                return NormalizedOrderState(
-                    order_id=order_id,
-                    status="error",
-                    symbol=None,
-                    side=None,
-                    order_type=None,
-                    qty=None,
-                    price=None,
-                    product_type=self.product_type,
-                    reduce_only=None,
-                    raw={
-                        "exchange": "gmo",
-                        "error": {
-                            "category": payload.category,
-                            "retryable": payload.retryable,
-                            "source_code": payload.source_code,
-                            "message": payload.message,
-                        },
-                    },
+                return _order_error_state(
+                    source_code=payload.source_code or "EXCHANGE_ERROR",
+                    message=payload.message,
+                )
+
+            if not isinstance(payload, dict):
+                return _order_error_state(
+                    source_code="INVALID_RESPONSE",
+                    message="fetch_order_response_not_dict",
                 )
 
             orders_raw = payload.get("data", [])
-            row = orders_raw[0] if isinstance(orders_raw, list) and orders_raw else {}
+            if not isinstance(orders_raw, list) or not orders_raw:
+                return _order_error_state(
+                    source_code="INVALID_RESPONSE",
+                    message="fetch_order_data_missing",
+                )
+
+            row = orders_raw[0] if isinstance(orders_raw[0], dict) else {}
+            status_raw = row.get("status")
+            status = status_raw.strip().lower() if isinstance(status_raw, str) else ""
+            if status in {"", "unknown"}:
+                return _order_error_state(
+                    source_code="INVALID_RESPONSE",
+                    message="fetch_order_status_unknown",
+                )
+
             return NormalizedOrderState(
                 order_id=str(row.get("orderId", order_id)),
-                status=str(row.get("status", "unknown")),
+                status=status,
                 symbol=row.get("symbol") if row.get("symbol") is not None else None,
                 side=row.get("side") if row.get("side") is not None else None,
                 order_type=row.get("orderType")
@@ -920,17 +955,9 @@ class GMOAdapter(ExchangeProtocol):
                 ),
                 raw={"exchange": "gmo", "payload": row},
             )
-        return NormalizedOrderState(
-            order_id=order_id,
-            status="unknown",
-            symbol=None,
-            side=None,
-            order_type=None,
-            qty=None,
-            price=None,
-            product_type=self.product_type,
-            reduce_only=None,
-            raw={"exchange": "gmo"},
+        return _order_error_state(
+            source_code="INVALID_RESPONSE",
+            message="fetch_order_requires_http_mode",
         )
 
     def stream_order_events(self) -> Iterator[NormalizedOrderEvent | NormalizedError]:
