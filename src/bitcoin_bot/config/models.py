@@ -15,6 +15,7 @@ class RuntimeSettings:
     interval_seconds: int = 300
     execute_orders: bool = False
     live_http_enabled: bool = False
+    live_order_auto_cancel: bool = True
 
 
 @dataclass(slots=True)

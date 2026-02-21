@@ -129,6 +129,7 @@ def _track_order_lifecycle(
     adapter: OrderPlacerProtocol,
     order_state: NormalizedOrderState,
     logs_dir: str,
+    auto_cancel_enabled: bool,
 ) -> tuple[NormalizedOrderState, list[str], bool | None, list[str]]:
     transitions = [order_state.status]
     reason_codes: list[str] = []
@@ -154,6 +155,19 @@ def _track_order_lifecycle(
             return fetched, reason_codes, retryable, transitions
 
         order_state = fetched
+
+    if order_state.status == "active" and not auto_cancel_enabled:
+        append_audit_event(
+            logs_dir=logs_dir,
+            event_type="order_cancel_result",
+            payload={
+                "order_id": order_state.order_id,
+                "status": "skipped_auto_cancel_disabled",
+                "source_code": None,
+                "retryable": None,
+            },
+        )
+        return order_state, reason_codes, retryable, transitions
 
     if order_state.status == "active" and hasattr(adapter, "cancel_order"):
         cancelled = adapter.cancel_order(order_state.order_id)
@@ -367,6 +381,7 @@ def run_live(
                     adapter=adapter,
                     order_state=order_result,
                     logs_dir=config.paths.logs_dir,
+                    auto_cancel_enabled=config.runtime.live_order_auto_cancel,
                 )
                 stop_reason_codes.extend(order_lifecycle_reason_codes)
                 order_status = order_result.status
@@ -441,6 +456,7 @@ def run_live(
             "product_type": config.exchange.product_type,
             "execute_orders": execute_orders_enabled,
             "live_http_enabled": config.runtime.live_http_enabled,
+            "live_order_auto_cancel": config.runtime.live_order_auto_cancel,
             "live_http_active": live_http_active,
             "decision_action": decision.action,
             "confidence": decision.confidence,

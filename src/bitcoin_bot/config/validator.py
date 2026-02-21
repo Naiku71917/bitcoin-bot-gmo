@@ -24,6 +24,12 @@ def validate_config(config: RuntimeConfig) -> RuntimeConfig:
             f"Invalid runtime.live_http_enabled: {config.runtime.live_http_enabled}"
         )
 
+    if not isinstance(config.runtime.live_order_auto_cancel, bool):
+        raise ValueError(
+            "Invalid runtime.live_order_auto_cancel: "
+            f"{config.runtime.live_order_auto_cancel}"
+        )
+
     if config.exchange.product_type not in ALLOWED_PRODUCT_TYPES:
         raise ValueError(
             f"Invalid exchange.product_type: {config.exchange.product_type}"
