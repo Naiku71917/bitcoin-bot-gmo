@@ -326,6 +326,13 @@ for name, func in check_plan:
     )
 
 passed = all(bool(item["ok"]) for item in checks)
+failed_category_counts: dict[str, int] = {}
+for item in checks:
+    if bool(item["ok"]):
+        continue
+    category = str(item["category"] or "exchange")
+    failed_category_counts[category] = failed_category_counts.get(category, 0) + 1
+
 report = {
     "generated_at": datetime.now(UTC).isoformat(),
     "mode": "real_connect" if real_connect else "non_destructive",
@@ -335,6 +342,7 @@ report = {
     "symbol": symbol,
     "passed": passed,
     "checks": checks,
+    "failed_category_counts": failed_category_counts,
 }
 artifact_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
