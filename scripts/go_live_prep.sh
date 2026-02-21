@@ -9,6 +9,9 @@ SUMMARY_PATH="${GO_LIVE_PREP_SUMMARY_PATH:-var/artifacts/go_live_prep_summary.js
 SOAK_TOTAL_ITERATIONS_VALUE="${GO_LIVE_SOAK_TOTAL_ITERATIONS:-2}"
 SOAK_INTERVAL_SECONDS_VALUE="${GO_LIVE_SOAK_INTERVAL_SECONDS:-1}"
 GO_LIVE_REQUIRE_AUTH_VALUE="${GO_LIVE_REQUIRE_AUTH:-0}"
+SIGNOFF_DATE="$(date +%Y%m%d)"
+SIGNOFF_PATH="var/artifacts/release_signoff_${SIGNOFF_DATE}.md"
+GENERATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 if [[ "$GO_LIVE_REQUIRE_AUTH_VALUE" != "0" && "$GO_LIVE_REQUIRE_AUTH_VALUE" != "1" ]]; then
   echo "[go-live-prep] FAIL: invalid_go_live_require_auth"
@@ -48,6 +51,36 @@ write_summary() {
 JSON
 }
 
+write_signoff() {
+  local decision="$1"
+  local failed_stage="$2"
+
+  cat >"$SIGNOFF_PATH" <<MARKDOWN
+# Release Signoff (${SIGNOFF_DATE})
+
+## 判定サマリ
+
+- decision: ${decision}
+- generated_at: ${GENERATED_AT}
+- failed_stage: ${failed_stage}
+- require_auth: ${GO_LIVE_REQUIRE_AUTH_VALUE}
+- auth_ready: ${AUTH_READY}
+
+## 実行情報
+
+- preflight_log: ${LOG_PATH}
+- preflight_summary: ${SUMMARY_PATH}
+
+## サインオフ
+
+- 担当: <name>
+- レビュー: <name>
+- 承認: <name>
+- 備考: <memo>
+MARKDOWN
+}
+
+
 next_action_for_stage() {
   local stage="$1"
   case "$stage" in
@@ -84,6 +117,7 @@ run_stage() {
   log_line "[go-live-prep] FAIL: ${stage}"
   log_line "[go-live-prep] NEXT_ACTION: ${next_action}"
   write_summary "NO-GO" "$stage" "$next_action"
+  write_signoff "NO-GO" "$stage"
   log_line "[go-live-prep] DECISION: NO-GO stage=${stage} next_action=${next_action}"
   exit 1
 }
@@ -93,6 +127,7 @@ if [[ "$GO_LIVE_REQUIRE_AUTH_VALUE" == "1" && "$AUTH_READY" != "1" ]]; then
   log_line "[go-live-prep] FAIL: auth_prereq"
   log_line "[go-live-prep] NEXT_ACTION: ${next_action}"
   write_summary "NO-GO" "auth_prereq" "$next_action"
+  write_signoff "NO-GO" "auth_prereq"
   log_line "[go-live-prep] DECISION: NO-GO stage=auth_prereq next_action=${next_action}"
   exit 1
 fi
@@ -107,5 +142,6 @@ else
 fi
 
 write_summary "GO" "" "none"
+write_signoff "GO" ""
 log_line "[go-live-prep] DECISION: GO"
 exit 0

@@ -115,7 +115,9 @@ bash scripts/go_live_prep.sh
 - 判定ログ:
 	- `var/artifacts/go_live_prep.log`
 	- `var/artifacts/go_live_prep_summary.json`
+	- `var/artifacts/release_signoff_YYYYMMDD.md`
 - `go_live_prep_summary.json` には `require_auth` と `auth_ready` が保存されます。
+- `release_signoff_YYYYMMDD.md` には判定/日時/失敗段階とサインオフ欄（担当/レビュー/承認）が保存されます。
 - 最終判定は1行出力されます。
 	- 成功: `[go-live-prep] DECISION: GO`
 	- 失敗: `[go-live-prep] DECISION: NO-GO stage=<stage> ...`
