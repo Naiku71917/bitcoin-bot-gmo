@@ -109,9 +109,13 @@ bash scripts/go_live_prep.sh
 - 短縮設定の例:
 	- `GO_LIVE_SOAK_TOTAL_ITERATIONS=2`
 	- `GO_LIVE_SOAK_INTERVAL_SECONDS=1`
+- 認証依存判定:
+	- `GO_LIVE_REQUIRE_AUTH=0`（既定）: 非破壊評価を維持
+	- `GO_LIVE_REQUIRE_AUTH=1`: 認証未設定なら即 `NO-GO` 判定
 - 判定ログ:
 	- `var/artifacts/go_live_prep.log`
 	- `var/artifacts/go_live_prep_summary.json`
+- `go_live_prep_summary.json` には `require_auth` と `auth_ready` が保存されます。
 - 最終判定は1行出力されます。
 	- 成功: `[go-live-prep] DECISION: GO`
 	- 失敗: `[go-live-prep] DECISION: NO-GO stage=<stage> ...`

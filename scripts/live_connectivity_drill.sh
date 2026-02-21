@@ -8,6 +8,7 @@ ARTIFACT_PATH="${LIVE_DRILL_ARTIFACT_PATH:-var/artifacts/live_connectivity_drill
 PRODUCT_TYPE="${LIVE_DRILL_PRODUCT_TYPE:-spot}"
 SYMBOL="${LIVE_DRILL_SYMBOL:-BTC_JPY}"
 REAL_CONNECT="${LIVE_DRILL_REAL_CONNECT:-0}"
+REQUIRE_AUTH="${LIVE_DRILL_REQUIRE_AUTH:-0}"
 API_BASE_URL="${LIVE_DRILL_API_BASE_URL:-https://api.coin.z.com}"
 WS_URL="${LIVE_DRILL_WS_URL:-wss://api.coin.z.com/ws}"
 
@@ -50,7 +51,13 @@ if [[ "$REAL_CONNECT" != "0" && "$REAL_CONNECT" != "1" ]]; then
     exit 1
 fi
 
-"$PYTHON_BIN" - <<'PY' "$ARTIFACT_PATH" "$PRODUCT_TYPE" "$SYMBOL" "$REAL_CONNECT" "$API_BASE_URL" "$WS_URL"
+if [[ "$REQUIRE_AUTH" != "0" && "$REQUIRE_AUTH" != "1" ]]; then
+    echo "[live-drill] FAIL: invalid_live_drill_require_auth"
+    echo "[live-drill] cause=exchange detail=LIVE_DRILL_REQUIRE_AUTH must be 0 or 1"
+    exit 1
+fi
+
+"$PYTHON_BIN" - <<'PY' "$ARTIFACT_PATH" "$PRODUCT_TYPE" "$SYMBOL" "$REAL_CONNECT" "$API_BASE_URL" "$WS_URL" "$REQUIRE_AUTH"
 from __future__ import annotations
 
 import base64
@@ -74,6 +81,7 @@ symbol = sys.argv[3]
 real_connect = sys.argv[4] == "1"
 api_base_url = sys.argv[5]
 ws_url = sys.argv[6]
+require_auth = sys.argv[7] == "1"
 
 
 def _classify_error(error: NormalizedError) -> str:
@@ -269,6 +277,7 @@ def _check_non_real_guard() -> tuple[bool, str | None, str | None]:
 
 
 checks: list[dict[str, object]] = []
+auth_ready = bool(os.getenv("GMO_API_KEY") and os.getenv("GMO_API_SECRET"))
 if real_connect:
     adapter = GMOAdapter(
         product_type=product_type,
@@ -294,6 +303,17 @@ else:
         ("stream_reconnection", _check_stream_reconnection_non_destructive),
     )
 
+if require_auth and not auth_ready:
+    checks.append(
+        {
+            "name": "auth_prereq",
+            "ok": False,
+            "category": "auth",
+            "detail": "missing_gmo_api_credentials",
+        }
+    )
+    check_plan = ()
+
 for name, func in check_plan:
     ok, category, detail = func()
     checks.append(
@@ -309,6 +329,8 @@ passed = all(bool(item["ok"]) for item in checks)
 report = {
     "generated_at": datetime.now(UTC).isoformat(),
     "mode": "real_connect" if real_connect else "non_destructive",
+    "require_auth": require_auth,
+    "auth_ready": auth_ready,
     "product_type": product_type,
     "symbol": symbol,
     "passed": passed,

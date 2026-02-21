@@ -8,6 +8,18 @@ LOG_PATH="${GO_LIVE_PREP_LOG_PATH:-var/artifacts/go_live_prep.log}"
 SUMMARY_PATH="${GO_LIVE_PREP_SUMMARY_PATH:-var/artifacts/go_live_prep_summary.json}"
 SOAK_TOTAL_ITERATIONS_VALUE="${GO_LIVE_SOAK_TOTAL_ITERATIONS:-2}"
 SOAK_INTERVAL_SECONDS_VALUE="${GO_LIVE_SOAK_INTERVAL_SECONDS:-1}"
+GO_LIVE_REQUIRE_AUTH_VALUE="${GO_LIVE_REQUIRE_AUTH:-0}"
+
+if [[ "$GO_LIVE_REQUIRE_AUTH_VALUE" != "0" && "$GO_LIVE_REQUIRE_AUTH_VALUE" != "1" ]]; then
+  echo "[go-live-prep] FAIL: invalid_go_live_require_auth"
+  echo "[go-live-prep] NEXT_ACTION: GO_LIVE_REQUIRE_AUTH は 0 または 1 を指定"
+  exit 1
+fi
+
+AUTH_READY="0"
+if [[ -n "${GMO_API_KEY:-}" && -n "${GMO_API_SECRET:-}" ]]; then
+  AUTH_READY="1"
+fi
 
 mkdir -p "$(dirname "$LOG_PATH")"
 : > "$LOG_PATH"
@@ -27,6 +39,8 @@ write_summary() {
   "decision": "${decision}",
   "failed_stage": "${failed_stage}",
   "next_action": "${next_action}",
+  "require_auth": ${GO_LIVE_REQUIRE_AUTH_VALUE},
+  "auth_ready": ${AUTH_READY},
   "soak_total_iterations": ${SOAK_TOTAL_ITERATIONS_VALUE},
   "soak_interval_seconds": ${SOAK_INTERVAL_SECONDS_VALUE},
   "log_path": "${LOG_PATH}"
@@ -74,10 +88,23 @@ run_stage() {
   exit 1
 }
 
+if [[ "$GO_LIVE_REQUIRE_AUTH_VALUE" == "1" && "$AUTH_READY" != "1" ]]; then
+  next_action="GMO_API_KEY/GMO_API_SECRET を設定して bash scripts/go_live_prep.sh を再実行"
+  log_line "[go-live-prep] FAIL: auth_prereq"
+  log_line "[go-live-prep] NEXT_ACTION: ${next_action}"
+  write_summary "NO-GO" "auth_prereq" "$next_action"
+  log_line "[go-live-prep] DECISION: NO-GO stage=auth_prereq next_action=${next_action}"
+  exit 1
+fi
+
 run_stage "go_nogo_gate" bash scripts/go_nogo_gate.sh
 run_stage "soak_24h_gate" env SOAK_TOTAL_ITERATIONS="$SOAK_TOTAL_ITERATIONS_VALUE" SOAK_INTERVAL_SECONDS="$SOAK_INTERVAL_SECONDS_VALUE" bash scripts/soak_24h_gate.sh
 run_stage "monthly_report" bash scripts/monthly_report.sh
-run_stage "live_connectivity_drill" bash scripts/live_connectivity_drill.sh
+if [[ "$GO_LIVE_REQUIRE_AUTH_VALUE" == "1" ]]; then
+  run_stage "live_connectivity_drill" env LIVE_DRILL_REQUIRE_AUTH=1 LIVE_DRILL_REAL_CONNECT=1 bash scripts/live_connectivity_drill.sh
+else
+  run_stage "live_connectivity_drill" env LIVE_DRILL_REQUIRE_AUTH=0 bash scripts/live_connectivity_drill.sh
+fi
 
 write_summary "GO" "" "none"
 log_line "[go-live-prep] DECISION: GO"
