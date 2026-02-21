@@ -6,7 +6,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from time import time
+from time import sleep, time
 from typing import Callable, Iterator, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -38,6 +38,8 @@ class GMOAdapter(ExchangeProtocol):
     api_base_url: str = "https://api.coin.z.com"
     use_http: bool = False
     timeout_seconds: float = 5.0
+    private_retry_max_attempts: int = 3
+    private_retry_base_delay_seconds: float = 0.0
     order_stream_source_factory: Callable[[], Iterator[dict]] | None = None
     account_stream_source_factory: Callable[[], Iterator[dict]] | None = None
 
@@ -54,6 +56,15 @@ class GMOAdapter(ExchangeProtocol):
     def __post_init__(self) -> None:
         if self.product_type not in {"spot", "leverage"}:
             raise ValueError(f"Unsupported product_type: {self.product_type}")
+        if self.private_retry_max_attempts < 1:
+            raise ValueError(
+                f"private_retry_max_attempts must be >=1, got {self.private_retry_max_attempts}"
+            )
+        if self.private_retry_base_delay_seconds < 0.0:
+            raise ValueError(
+                "private_retry_base_delay_seconds must be >=0.0, "
+                f"got {self.private_retry_base_delay_seconds}"
+            )
 
     @property
     def _is_leverage(self) -> bool:
@@ -135,6 +146,42 @@ class GMOAdapter(ExchangeProtocol):
             return self._normalize_http_error(exc.code, str(exc))
         except (URLError, TimeoutError) as exc:
             return self.normalize_error(source_code="NETWORK_TIMEOUT", message=str(exc))
+
+    def _request_json_private_with_retry(
+        self,
+        *,
+        method: str,
+        path: str,
+        params: dict[str, str] | None = None,
+        body: dict[str, object] | None = None,
+    ) -> dict | NormalizedError:
+        attempts = max(1, int(self.private_retry_max_attempts))
+        base_delay = max(0.0, float(self.private_retry_base_delay_seconds))
+
+        for attempt_index in range(attempts):
+            result = self._request_json(
+                method=method,
+                path=path,
+                params=params,
+                auth=True,
+                **({"body": body} if body is not None else {}),
+            )
+            if not isinstance(result, NormalizedError):
+                return result
+
+            if result.category not in {"rate_limit", "network"}:
+                return result
+
+            if attempt_index >= attempts - 1:
+                return result
+
+            if base_delay > 0.0:
+                sleep(base_delay * (2**attempt_index))
+
+        return self.normalize_error(
+            source_code="EXCHANGE_ERROR",
+            message="private_retry_exhausted",
+        )
 
     def _to_datetime(self, value: object) -> datetime | None:
         if isinstance(value, datetime):
@@ -365,10 +412,9 @@ class GMOAdapter(ExchangeProtocol):
         self, account_type: str
     ) -> list[NormalizedBalance] | NormalizedError:
         if self.use_http:
-            payload = self._request_json(
+            payload = self._request_json_private_with_retry(
                 method="GET",
                 path="/private/v1/account/assets",
-                auth=True,
             )
             if isinstance(payload, NormalizedError):
                 return payload
@@ -402,11 +448,10 @@ class GMOAdapter(ExchangeProtocol):
 
     def fetch_positions(self, symbol: str) -> ErrorAwareList[NormalizedPosition]:
         if self.use_http:
-            payload = self._request_json(
+            payload = self._request_json_private_with_retry(
                 method="GET",
                 path="/private/v1/openPositions",
                 params={"symbol": symbol},
-                auth=True,
             )
             if isinstance(payload, NormalizedError):
                 return ErrorAwareList(error=self._failure_info_from_error(payload))
@@ -461,11 +506,10 @@ class GMOAdapter(ExchangeProtocol):
             if self._is_leverage:
                 request_body["reduceOnly"] = bool(reduce_only)
 
-            payload = self._request_json(
+            payload = self._request_json_private_with_retry(
                 method="POST",
                 path="/private/v1/order",
                 body=request_body,
-                auth=True,
             )
 
             if isinstance(payload, NormalizedError):
@@ -541,11 +585,10 @@ class GMOAdapter(ExchangeProtocol):
 
     def cancel_order(self, order_id: str) -> NormalizedOrderState:
         if self.use_http:
-            payload = self._request_json(
+            payload = self._request_json_private_with_retry(
                 method="POST",
                 path="/private/v1/cancelOrder",
                 body={"orderId": order_id},
-                auth=True,
             )
             if isinstance(payload, NormalizedError):
                 return NormalizedOrderState(
@@ -613,11 +656,10 @@ class GMOAdapter(ExchangeProtocol):
 
     def fetch_order(self, order_id: str) -> NormalizedOrderState:
         if self.use_http:
-            payload = self._request_json(
+            payload = self._request_json_private_with_retry(
                 method="GET",
                 path="/private/v1/activeOrders",
                 params={"orderId": order_id},
-                auth=True,
             )
             if isinstance(payload, NormalizedError):
                 return NormalizedOrderState(

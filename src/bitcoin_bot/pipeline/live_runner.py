@@ -288,6 +288,8 @@ def run_live(
         product_type=cast(ProductType, config.exchange.product_type),
         api_base_url=config.exchange.api_base_url,
         use_http=live_http_active,
+        private_retry_max_attempts=config.exchange.private_retry_max_attempts,
+        private_retry_base_delay_seconds=config.exchange.private_retry_base_delay_seconds,
     )
     stream_monitor_status = _probe_stream_monitor_status(adapter)
     order_attempted = False

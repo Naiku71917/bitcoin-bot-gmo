@@ -25,6 +25,8 @@ class ExchangeSettings:
     symbol: str = "BTC_JPY"
     api_base_url: str = "https://api.coin.z.com"
     ws_url: str = "wss://api.coin.z.com/ws"
+    private_retry_max_attempts: int = 3
+    private_retry_base_delay_seconds: float = 0.0
 
 
 @dataclass(slots=True)

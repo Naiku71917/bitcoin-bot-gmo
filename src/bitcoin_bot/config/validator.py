@@ -35,6 +35,18 @@ def validate_config(config: RuntimeConfig) -> RuntimeConfig:
             f"Invalid exchange.product_type: {config.exchange.product_type}"
         )
 
+    if config.exchange.private_retry_max_attempts < 1:
+        raise ValueError(
+            "Invalid exchange.private_retry_max_attempts: "
+            f"{config.exchange.private_retry_max_attempts}"
+        )
+
+    if config.exchange.private_retry_base_delay_seconds < 0.0:
+        raise ValueError(
+            "Invalid exchange.private_retry_base_delay_seconds: "
+            f"{config.exchange.private_retry_base_delay_seconds}"
+        )
+
     if not (0.0 < config.risk.position_risk_fraction <= 1.0):
         raise ValueError(
             f"Invalid risk.position_risk_fraction: {config.risk.position_risk_fraction}"

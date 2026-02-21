@@ -49,7 +49,7 @@ def test_live_http_enabled_true_activates_http(monkeypatch, tmp_path):
 
     captured: dict[str, object] = {}
 
-    def _adapter_factory(*, product_type, api_base_url, use_http):
+    def _adapter_factory(*, product_type, api_base_url, use_http, **kwargs):
         captured["use_http"] = use_http
         return _DummyAdapter(
             product_type=product_type,
@@ -72,7 +72,7 @@ def test_live_http_disabled_keeps_http_off(monkeypatch, tmp_path):
 
     captured: dict[str, object] = {}
 
-    def _adapter_factory(*, product_type, api_base_url, use_http):
+    def _adapter_factory(*, product_type, api_base_url, use_http, **kwargs):
         captured["use_http"] = use_http
         return _DummyAdapter(
             product_type=product_type,
@@ -95,7 +95,7 @@ def test_non_live_mode_keeps_http_off(monkeypatch, tmp_path):
 
     captured: dict[str, object] = {}
 
-    def _adapter_factory(*, product_type, api_base_url, use_http):
+    def _adapter_factory(*, product_type, api_base_url, use_http, **kwargs):
         captured["use_http"] = use_http
         return _DummyAdapter(
             product_type=product_type,
