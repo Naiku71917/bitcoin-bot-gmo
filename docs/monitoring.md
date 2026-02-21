@@ -62,9 +62,11 @@ docker-compose --profile monitoring up -d
 
 ```bash
 bash scripts/live_connectivity_drill.sh
+LIVE_DRILL_REAL_CONNECT=1 bash scripts/live_connectivity_drill.sh
 ```
 
 - 成果物: `var/artifacts/live_connectivity_drill.json`
+- `mode` が `non_destructive` なら非破壊検証、`real_connect` なら実接続検証
 - 失敗カテゴリ:
    - `auth`: APIキー/シークレット不備
    - `network`: 通信断/タイムアウト

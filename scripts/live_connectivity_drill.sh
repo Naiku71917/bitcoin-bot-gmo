@@ -7,6 +7,9 @@ cd "$ROOT_DIR"
 ARTIFACT_PATH="${LIVE_DRILL_ARTIFACT_PATH:-var/artifacts/live_connectivity_drill.json}"
 PRODUCT_TYPE="${LIVE_DRILL_PRODUCT_TYPE:-spot}"
 SYMBOL="${LIVE_DRILL_SYMBOL:-BTC_JPY}"
+REAL_CONNECT="${LIVE_DRILL_REAL_CONNECT:-0}"
+API_BASE_URL="${LIVE_DRILL_API_BASE_URL:-https://api.coin.z.com}"
+WS_URL="${LIVE_DRILL_WS_URL:-wss://api.coin.z.com/ws}"
 
 resolve_python_bin() {
   if [[ -n "${PYTHON_BIN:-}" ]]; then
@@ -41,13 +44,25 @@ fi
 
 mkdir -p "$(dirname "$ARTIFACT_PATH")"
 
-"$PYTHON_BIN" - <<'PY' "$ARTIFACT_PATH" "$PRODUCT_TYPE" "$SYMBOL"
+if [[ "$REAL_CONNECT" != "0" && "$REAL_CONNECT" != "1" ]]; then
+    echo "[live-drill] FAIL: invalid_live_drill_real_connect"
+    echo "[live-drill] cause=exchange detail=LIVE_DRILL_REAL_CONNECT must be 0 or 1"
+    exit 1
+fi
+
+"$PYTHON_BIN" - <<'PY' "$ARTIFACT_PATH" "$PRODUCT_TYPE" "$SYMBOL" "$REAL_CONNECT" "$API_BASE_URL" "$WS_URL"
 from __future__ import annotations
 
+import base64
 import json
+import os
+import secrets
+import socket
+import ssl
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 from urllib.error import URLError
 
 from bitcoin_bot.exchange.gmo_adapter import GMOAdapter
@@ -56,6 +71,9 @@ from bitcoin_bot.exchange.protocol import ErrorAwareList, NormalizedError
 artifact_path = Path(sys.argv[1])
 product_type = sys.argv[2]
 symbol = sys.argv[3]
+real_connect = sys.argv[4] == "1"
+api_base_url = sys.argv[5]
+ws_url = sys.argv[6]
 
 
 def _classify_error(error: NormalizedError) -> str:
@@ -83,7 +101,7 @@ def _check_positions(adapter: GMOAdapter) -> tuple[bool, str | None, str | None]
     return True, None, None
 
 
-def _check_stream_connection() -> tuple[bool, str | None, str | None]:
+def _check_stream_connection_non_destructive() -> tuple[bool, str | None, str | None]:
     adapter = GMOAdapter(
         product_type="spot",
         use_http=False,
@@ -123,7 +141,7 @@ def _check_stream_connection() -> tuple[bool, str | None, str | None]:
     return True, None, None
 
 
-def _check_stream_reconnection() -> tuple[bool, str | None, str | None]:
+def _check_stream_reconnection_non_destructive() -> tuple[bool, str | None, str | None]:
     state = {"attempt": 0}
 
     def factory():
@@ -171,17 +189,112 @@ def _check_stream_reconnection() -> tuple[bool, str | None, str | None]:
     return True, None, None
 
 
-checks: list[dict[str, object]] = []
-adapter = GMOAdapter(product_type=product_type, use_http=True)
+def _check_required_auth_env() -> tuple[bool, str | None, str | None]:
+    api_key = os.getenv("GMO_API_KEY")
+    api_secret = os.getenv("GMO_API_SECRET")
+    if api_key and api_secret:
+        return True, None, None
+    return False, "auth", "missing_gmo_api_credentials"
 
-for name, func in (
-    ("api_auth_balance", lambda: _check_balances(adapter)),
-    ("ticker_read", lambda: _check_ticker(adapter)),
-    ("balance_read", lambda: _check_balances(adapter)),
-    ("position_read", lambda: _check_positions(adapter)),
-    ("stream_connection", _check_stream_connection),
-    ("stream_reconnection", _check_stream_reconnection),
-):
+
+def _classify_exception(exc: Exception) -> str:
+    text = str(exc).lower()
+    if "timed out" in text or "timeout" in text:
+        return "network"
+    if "429" in text or "rate" in text:
+        return "rate_limit"
+    return "exchange"
+
+
+def _ws_handshake_once(target_url: str) -> tuple[bool, str | None, str | None]:
+    parsed = urlparse(target_url)
+    if parsed.scheme not in {"ws", "wss"}:
+        return False, "exchange", "unsupported_ws_scheme"
+
+    host = parsed.hostname
+    if host is None:
+        return False, "exchange", "invalid_ws_host"
+
+    port = parsed.port or (443 if parsed.scheme == "wss" else 80)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+
+    try:
+        sock = socket.create_connection((host, port), timeout=5)
+        if parsed.scheme == "wss":
+            context = ssl.create_default_context()
+            sock = context.wrap_socket(sock, server_hostname=host)
+
+        sec_key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
+        request = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {sec_key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        )
+        sock.sendall(request.encode("utf-8"))
+        response = sock.recv(4096).decode("utf-8", errors="ignore")
+        sock.close()
+    except Exception as exc:
+        return False, _classify_exception(exc), str(exc)
+
+    if " 101 " not in response:
+        return False, "exchange", "ws_handshake_not_101"
+
+    return True, None, None
+
+
+def _check_stream_connection_real() -> tuple[bool, str | None, str | None]:
+    return _ws_handshake_once(ws_url)
+
+
+def _check_stream_reconnection_real() -> tuple[bool, str | None, str | None]:
+    first_ok, first_category, first_detail = _ws_handshake_once(ws_url)
+    if not first_ok:
+        return False, first_category, f"first_connect_failed:{first_detail}"
+
+    second_ok, second_category, second_detail = _ws_handshake_once(ws_url)
+    if not second_ok:
+        return False, second_category, f"reconnect_failed:{second_detail}"
+
+    return True, None, None
+
+
+def _check_non_real_guard() -> tuple[bool, str | None, str | None]:
+    return True, None, "real_connect_guarded"
+
+
+checks: list[dict[str, object]] = []
+if real_connect:
+    adapter = GMOAdapter(
+        product_type=product_type,
+        api_base_url=api_base_url,
+        use_http=True,
+    )
+    check_plan = (
+        ("api_auth", _check_required_auth_env),
+        ("ticker_read", lambda: _check_ticker(adapter)),
+        ("balance_read", lambda: _check_balances(adapter)),
+        ("position_read", lambda: _check_positions(adapter)),
+        ("stream_connection", _check_stream_connection_real),
+        ("stream_reconnection", _check_stream_reconnection_real),
+    )
+else:
+    adapter = GMOAdapter(product_type=product_type, use_http=False)
+    check_plan = (
+        ("real_connect_guard", _check_non_real_guard),
+        ("ticker_read", lambda: _check_ticker(adapter)),
+        ("balance_read", lambda: _check_balances(adapter)),
+        ("position_read", lambda: _check_positions(adapter)),
+        ("stream_connection", _check_stream_connection_non_destructive),
+        ("stream_reconnection", _check_stream_reconnection_non_destructive),
+    )
+
+for name, func in check_plan:
     ok, category, detail = func()
     checks.append(
         {
@@ -195,6 +308,7 @@ for name, func in (
 passed = all(bool(item["ok"]) for item in checks)
 report = {
     "generated_at": datetime.now(UTC).isoformat(),
+    "mode": "real_connect" if real_connect else "non_destructive",
     "product_type": product_type,
     "symbol": symbol,
     "passed": passed,

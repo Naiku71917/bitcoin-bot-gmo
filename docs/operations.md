@@ -230,6 +230,15 @@ bash scripts/live_connectivity_drill.sh
 	- `rate_limit`
 	- `exchange`
 
+### 本接続モード（明示有効時のみ）
+
+```bash
+LIVE_DRILL_REAL_CONNECT=1 bash scripts/live_connectivity_drill.sh
+```
+
+- `LIVE_DRILL_REAL_CONNECT=1` のときのみ実API/WSへ接続します。
+- 指定がない場合は非破壊モードを維持し、誤接続を防止します。
+
 ## 鍵ローテーション演習（最小）
 
 ```bash
