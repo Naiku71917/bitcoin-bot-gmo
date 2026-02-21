@@ -29,6 +29,15 @@ def test_order_attempt_and_result_events_are_written(tmp_path):
     assert "order_attempt" in event_types
     assert "order_result" in event_types
 
+    order_attempt = [
+        event for event in events if event["event_type"] == "order_attempt"
+    ][-1]
+    order_result = [event for event in events if event["event_type"] == "order_result"][
+        -1
+    ]
+    assert isinstance(order_attempt["payload"].get("client_order_id"), str)
+    assert isinstance(order_result["payload"].get("client_order_id"), str)
+
 
 def test_risk_stop_event_is_written(tmp_path):
     config = RuntimeConfig()

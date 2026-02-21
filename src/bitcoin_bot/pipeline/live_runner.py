@@ -28,6 +28,7 @@ from bitcoin_bot.telemetry.reason_codes import (
     normalize_reason_codes,
 )
 from bitcoin_bot.telemetry.reporters import emit_run_progress
+from bitcoin_bot.utils.io import build_live_client_order_id
 from bitcoin_bot.utils.logging import append_audit_event
 
 
@@ -218,6 +219,13 @@ def _probe_stream_monitor_status(adapter: Any) -> str:
     return "reconnecting" if reconnecting_detected else "active"
 
 
+def _register_order_attempt(client_order_id: str, sent_order_ids: set[str]) -> bool:
+    if client_order_id in sent_order_ids:
+        return False
+    sent_order_ids.add(client_order_id)
+    return True
+
+
 def _default_risk_snapshot() -> dict[str, float]:
     return {
         "current_drawdown": 0.0,
@@ -295,9 +303,11 @@ def run_live(
     stream_monitor_status = _probe_stream_monitor_status(adapter)
     order_attempted = False
     order_status = "not_attempted"
+    order_client_order_id: str | None = None
     order_sizing: dict[str, float] = {}
     order_lifecycle_retryable: bool | None = None
     order_lifecycle_transitions: list[str] = []
+    sent_order_ids: set[str] = set()
     if not execute_orders_enabled:
         stop_reason_codes.append(REASON_CODE_EXECUTE_ORDERS_DISABLED)
     elif guard_result["status"] == "success" and decision.action in {"buy", "sell"}:
@@ -348,58 +358,82 @@ def run_live(
                     },
                 )
             else:
-                order_attempted = True
-                append_audit_event(
-                    logs_dir=config.paths.logs_dir,
-                    event_type="order_attempt",
-                    payload={
-                        "symbol": config.exchange.symbol,
-                        "product_type": config.exchange.product_type,
-                        "execute_orders": execute_orders_enabled,
-                        "order_sizing": order_sizing,
-                    },
+                order_client_order_id = build_live_client_order_id(
+                    config.exchange.symbol
                 )
-                order_result = adapter.place_order(
-                    NormalizedOrder(
-                        exchange=config.exchange.name,
-                        product_type=cast(ProductType, config.exchange.product_type),
-                        symbol=config.exchange.symbol,
-                        side=decision.action,
-                        order_type="market",
-                        time_in_force="GTC",
-                        qty=qty,
-                        price=None,
-                        reduce_only=False
-                        if config.exchange.product_type == "leverage"
-                        else None,
-                        client_order_id="live-min-order",
+                if not _register_order_attempt(order_client_order_id, sent_order_ids):
+                    order_status = "skipped_idempotency_guard"
+                    append_audit_event(
+                        logs_dir=config.paths.logs_dir,
+                        event_type="order_attempt",
+                        payload={
+                            "symbol": config.exchange.symbol,
+                            "product_type": config.exchange.product_type,
+                            "execute_orders": execute_orders_enabled,
+                            "decision_action": decision.action,
+                            "client_order_id": order_client_order_id,
+                            "skipped": True,
+                            "skip_reason": "idempotency_guard",
+                            "order_sizing": order_sizing,
+                        },
                     )
-                )
-                (
-                    order_result,
-                    order_lifecycle_reason_codes,
-                    order_lifecycle_retryable,
-                    order_lifecycle_transitions,
-                ) = _track_order_lifecycle(
-                    adapter=adapter,
-                    order_state=order_result,
-                    logs_dir=config.paths.logs_dir,
-                    auto_cancel_enabled=config.runtime.live_order_auto_cancel,
-                )
-                stop_reason_codes.extend(order_lifecycle_reason_codes)
-                order_status = order_result.status
-                append_audit_event(
-                    logs_dir=config.paths.logs_dir,
-                    event_type="order_result",
-                    payload={
-                        "symbol": config.exchange.symbol,
-                        "product_type": config.exchange.product_type,
-                        "decision_action": decision.action,
-                        "status": order_status,
-                        "order_id": order_result.order_id,
-                        "order_sizing": order_sizing,
-                    },
-                )
+                else:
+                    order_attempted = True
+                    append_audit_event(
+                        logs_dir=config.paths.logs_dir,
+                        event_type="order_attempt",
+                        payload={
+                            "symbol": config.exchange.symbol,
+                            "product_type": config.exchange.product_type,
+                            "execute_orders": execute_orders_enabled,
+                            "client_order_id": order_client_order_id,
+                            "order_sizing": order_sizing,
+                        },
+                    )
+                    order_result = adapter.place_order(
+                        NormalizedOrder(
+                            exchange=config.exchange.name,
+                            product_type=cast(
+                                ProductType, config.exchange.product_type
+                            ),
+                            symbol=config.exchange.symbol,
+                            side=decision.action,
+                            order_type="market",
+                            time_in_force="GTC",
+                            qty=qty,
+                            price=None,
+                            reduce_only=False
+                            if config.exchange.product_type == "leverage"
+                            else None,
+                            client_order_id=order_client_order_id,
+                        )
+                    )
+                    (
+                        order_result,
+                        order_lifecycle_reason_codes,
+                        order_lifecycle_retryable,
+                        order_lifecycle_transitions,
+                    ) = _track_order_lifecycle(
+                        adapter=adapter,
+                        order_state=order_result,
+                        logs_dir=config.paths.logs_dir,
+                        auto_cancel_enabled=config.runtime.live_order_auto_cancel,
+                    )
+                    stop_reason_codes.extend(order_lifecycle_reason_codes)
+                    order_status = order_result.status
+                    append_audit_event(
+                        logs_dir=config.paths.logs_dir,
+                        event_type="order_result",
+                        payload={
+                            "symbol": config.exchange.symbol,
+                            "product_type": config.exchange.product_type,
+                            "decision_action": decision.action,
+                            "status": order_status,
+                            "order_id": order_result.order_id,
+                            "client_order_id": order_client_order_id,
+                            "order_sizing": order_sizing,
+                        },
+                    )
     elif guard_result["status"] == "success":
         order_status = "skipped_by_strategy"
         append_audit_event(
@@ -465,6 +499,7 @@ def run_live(
             "confidence": decision.confidence,
             "order_attempted": order_attempted,
             "order_status": order_status,
+            "order_client_order_id": order_client_order_id,
             "order_sizing": order_sizing,
             "order_lifecycle": {
                 "transitions": order_lifecycle_transitions,
