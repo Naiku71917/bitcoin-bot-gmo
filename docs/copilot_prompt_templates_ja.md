@@ -1609,6 +1609,157 @@ run_complete 契約を運用固定するため、スキーマversionを導入し
 - 既存プレフライト契約非破壊
 ```
 
+## 2.65 PR-65: GMO WebSocket本実装（注文/口座イベント）
+
+```text
+実運用のイベント追跡精度を上げるため、取引所イベントストリームを本実装へ更新してください。
+
+対象:
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- src/bitcoin_bot/exchange/protocol.py（必要最小限）
+- tests/test_exchange_ws_runtime.py（新規可）
+- tests/test_live_reconnect_policy.py（必要最小限）
+
+必須仕様:
+- `stream_order_events` / `stream_account_events` を実WS接続で受信可能にする
+- 認証チャネルが必要な場合は署名付きsubscribeを実装
+- 再接続時に最低1回の復旧を試行し、失敗時は `NormalizedError` を返す
+
+実行コマンド（必須）:
+- pytest -q tests/test_exchange_ws_runtime.py
+- pytest -q tests/test_live_reconnect_policy.py
+
+受け入れ条件:
+- streamがファクトリ依存の疑似実装から脱却する
+- 既存の monitor/reconnect 契約非破壊
+```
+
+## 2.66 PR-66: 注文ID一意化と冪等性強化
+
+```text
+実運用での重複注文リスクを下げるため、client_order_id 生成を固定文字列から一意生成へ更新してください。
+
+対象:
+- src/bitcoin_bot/pipeline/live_runner.py
+- src/bitcoin_bot/utils/io.py（必要最小限）
+- tests/test_live_order_idempotency.py（新規可）
+- tests/test_audit_log_contract.py（必要最小限）
+
+必須仕様:
+- `live-min-order` を廃止し、時刻+乱数+symbol を含む一意IDへ変更
+- 同一ループ内重複送信を防ぐ最小冪等ガードを追加
+- 生成したIDを監査ログと summary に保存
+
+実行コマンド（必須）:
+- pytest -q tests/test_live_order_idempotency.py
+- pytest -q tests/test_audit_log_contract.py
+
+受け入れ条件:
+- 重複注文リスクが低減される
+- 監査契約非破壊
+```
+
+## 2.67 PR-67: 注文状態 `unknown` 廃止と明示エラー化
+
+```text
+運用判断の曖昧さをなくすため、`unknown` ステータス返却を明示エラーへ置換してください。
+
+対象:
+- src/bitcoin_bot/exchange/gmo_adapter.py
+- src/bitcoin_bot/pipeline/live_runner.py（必要最小限）
+- tests/test_order_status_contract.py（新規可）
+
+必須仕様:
+- `fetch_order` のフォールバック `status="unknown"` を廃止
+- 不明状態は `status="error"` + `raw.error`（source_code/message/retryable）で返す
+- summary の reason code を辞書値のみで維持
+
+実行コマンド（必須）:
+- pytest -q tests/test_order_status_contract.py
+- pytest -q tests/test_order_lifecycle_runtime.py
+
+受け入れ条件:
+- 状態判定の曖昧さがなくなる
+- 既存 lifecycle 契約非破壊
+```
+
+## 2.68 PR-68: Backtestデータ品質モード（fail-fast切替）
+
+```text
+本番前検証の信頼性向上のため、backtestのデータ品質ポリシーを設定化してください。
+
+対象:
+- src/bitcoin_bot/data/ohlcv.py
+- src/bitcoin_bot/pipeline/backtest_runner.py
+- src/bitcoin_bot/config/models.py（必要最小限）
+- src/bitcoin_bot/config/validator.py（必要最小限）
+- tests/test_backtest_data_quality_mode.py（新規可）
+
+必須仕様:
+- `backtest_data_quality_mode`（`strict|fallback`）を追加
+- `strict` では `synthetic_fallback` を禁止し fail-fast
+- `fallback` では現行挙動を維持
+
+実行コマンド（必須）:
+- pytest -q tests/test_backtest_data_quality_mode.py
+- bash scripts/replay_check.sh
+
+受け入れ条件:
+- 本番前検証でデータ欠陥を見逃しにくくなる
+- replay 契約非破壊
+```
+
+## 2.69 PR-69: 戦略判定の本番最小強化（regimeフィルタ）
+
+```text
+実運用時の不要約定を減らすため、戦略判定に最小のregimeフィルタを追加してください。
+
+対象:
+- src/bitcoin_bot/strategy/core.py
+- src/bitcoin_bot/config/models.py（必要最小限）
+- src/bitcoin_bot/pipeline/live_runner.py（必要最小限）
+- tests/test_strategy_contract.py
+- tests/test_strategy_live_decision_runtime.py
+
+必須仕様:
+- ボラ急変/薄商い時に `hold` へ寄せる最小フィルタを追加
+- フィルタ発火時は reason code を追加（辞書管理）
+- 既存の min_confidence ロジックと共存させる
+
+実行コマンド（必須）:
+- pytest -q tests/test_strategy_contract.py
+- pytest -q tests/test_strategy_live_decision_runtime.py
+
+受け入れ条件:
+- 実運用時の誤エントリーが抑制される
+- 既存 strategy 契約非破壊
+```
+
+## 2.70 PR-70: 本番前最終E2E（実接続+サインオフ一体）
+
+```text
+本番開始可否を最終固定するため、実接続ドリルとサインオフを一体化した最終E2Eを追加してください。
+
+対象:
+- scripts/go_live_prep.sh
+- scripts/live_connectivity_drill.sh
+- docs/operations.md
+- docs/release_signoff_template.md
+
+必須仕様:
+- `GO_LIVE_REQUIRE_AUTH=1` 時は必ず `LIVE_DRILL_REAL_CONNECT=1` で判定
+- 実接続判定結果（カテゴリ別失敗内訳）を `release_signoff_YYYYMMDD.md` に反映
+- 実行完了時に `GO/NO-GO` を1行で出力
+
+実行コマンド（必須）:
+- GO_LIVE_REQUIRE_AUTH=1 bash scripts/go_live_prep.sh
+- ls -l var/artifacts/release_signoff_*.md
+
+受け入れ条件:
+- 本番投入判断の証跡が強化される
+- 既存プレフライト契約非破壊
+```
+
 ---
 
 ## 3. PRレビュー時のチェックリスト
